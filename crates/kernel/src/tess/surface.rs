@@ -13,6 +13,7 @@ use crate::body::from_p3;
 /// `surface` in the evaluator's form, parameterised exactly as truck parameterises it.
 pub(crate) fn eval_surface(surface: &mt::Surface) -> Option<EvalSurface> {
     let s = match surface {
+        mt::Surface::InvoluteExtrusion(_) => return None,
         mt::Surface::Plane(p) => {
             EvalSurface::Plane { origin: from_p3(p.subs(0.0, 0.0)), du: from_v3(p.uder(0.0, 0.0)), dv: from_v3(p.vder(0.0, 0.0)) }
         }
@@ -75,7 +76,7 @@ pub(crate) fn eval_curve(c: &mt::Curve) -> Option<EvalCurve> {
         mt::Curve::Line(l) => (1, vec![0.0, 0.0, 1.0, 1.0], vec![[l.0.x, l.0.y, l.0.z, 1.0], [l.1.x, l.1.y, l.1.z, 1.0]]),
         mt::Curve::BSplineCurve(b) => (b.degree(), knots(b.knot_vec())?, b.control_points().iter().map(|p| [p.x, p.y, p.z, 1.0]).collect()),
         mt::Curve::NurbsCurve(n) => (n.degree(), knots(n.knot_vec())?, n.control_points().iter().map(|h| [h.x, h.y, h.z, h.w]).collect()),
-        mt::Curve::IntersectionCurve(_) => return None,
+        mt::Curve::IntersectionCurve(_) | mt::Curve::Involute(_) => return None,
     };
     let ok = (1..=MAX_SPLINE_DEGREE).contains(&degree)
         && ctrl.len() <= MAX_EVAL_POINTS
@@ -95,6 +96,7 @@ mod tests {
         for face in solid.face_iter() {
             let surface = face.surface();
             let kind = match surface {
+                mt::Surface::InvoluteExtrusion(_) => continue,
                 mt::Surface::Plane(_) => 0,
                 mt::Surface::BSplineSurface(_) => 1,
                 mt::Surface::NurbsSurface(_) => 2,

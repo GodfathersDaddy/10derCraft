@@ -1106,6 +1106,7 @@ impl Body {
         }
         for e in self.solid.edge_iter() {
             match e.curve() {
+                mt::Curve::Involute(c) => { let (ts,ps)=c.parameter_division((0.,1.),1e-5); let _=ts; for p in ps {b.add(from_p3(p));} },
                 mt::Curve::Line(l) => {
                     b.add(from_p3(l.0));
                     b.add(from_p3(l.1));

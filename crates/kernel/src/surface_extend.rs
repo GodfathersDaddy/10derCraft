@@ -1131,6 +1131,7 @@ fn continued(surface: &mt::Surface, eval: &EvalSurface, need: &[(f64, f64); 2]) 
     };
     let unsupported = || KernelError::Invalid("not supported yet: continuing this kind of surface past its bounds".into());
     match surface {
+        mt::Surface::InvoluteExtrusion(_) => Err(unsupported()),
         mt::Surface::Plane(_) => Ok(Continued { surface: surface.clone(), map: identity }),
         mt::Surface::BSplineSurface(_) | mt::Surface::NurbsSurface(_) => {
             let (Some(EvalSurface::Nurbs { degree, knots, count, ctrl }), rational) = (Some(eval), matches!(surface, mt::Surface::NurbsSurface(_)))
@@ -1171,7 +1172,7 @@ fn continued(surface: &mt::Surface, eval: &EvalSurface, need: &[(f64, f64); 2]) 
                     let (k, rows) = continue_span(&ec.knots, ec.degree, &rows, (lo, hi)).ok_or_else(unsupported)?;
                     (nurbs_curve(k, rows.iter().filter_map(|r| r.first().copied()).collect(), matches!(c, mt::Curve::NurbsCurve(_)))?, identity)
                 }
-                mt::Curve::IntersectionCurve(_) => return Err(unsupported()),
+                mt::Curve::IntersectionCurve(_) | mt::Curve::Involute(_) => return Err(unsupported()),
             };
             let turned = proc.map_ref(|r| mt::RevolutedCurve::by_revolution(profile, r.origin(), r.axis()));
             Ok(Continued { surface: mt::Surface::RevolutedCurve(turned), map })

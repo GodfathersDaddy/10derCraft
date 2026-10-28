@@ -194,6 +194,14 @@ pub(crate) fn passes(curve: &mt::Curve, p: mt::Point3, tol: f64) -> bool {
 pub(crate) fn iso_curve(surface: &mt::Surface, along_u: bool, w: f64, from: f64, to: f64) -> Result<mt::Curve> {
     let at = |t: f64| if along_u { surface.subs(t, w) } else { surface.subs(w, t) };
     match surface {
+        mt::Surface::InvoluteExtrusion(s) => {
+            if along_u != s.swapped {
+                let mut c=s.profile.clone();
+                let d=c.parameter[1]-c.parameter[0];let t0=c.parameter[0];
+                c.parameter=[t0+from*d,t0+to*d];c.origin+=s.direction*w;
+                Ok(mt::Curve::Involute(c))
+            } else {Ok(mt::Curve::Line(mt::Line(at(from),at(to))))}
+        },
         mt::Surface::Plane(_) => Ok(mt::Curve::Line(mt::Line(at(from), at(to)))),
         mt::Surface::BSplineSurface(_) | mt::Surface::NurbsSurface(_) => {
             let hom: mt::BSplineSurface<mt::Vector4> = match surface {

@@ -33,6 +33,12 @@ pub mod dialogs_motion;
 pub mod dialogs_move;
 pub mod dialogs_part_size;
 pub mod dialogs_parts;
+pub mod dialogs_gear;
+mod mechanics_ui;
+mod mks_ui;
+mod mks_dynamics_ui;
+mod mks_result_view;
+mod robot_ui;
 pub mod dialogs_plastic;
 pub mod dialogs_save_mesh;
 pub mod dialogs_sheet;
@@ -46,6 +52,7 @@ mod dimension_create_ui_tests;
 pub mod documents;
 pub mod drag_snap;
 pub mod edit_clipboard;
+pub mod engineering_studio;
 pub mod fonts;
 pub mod frame;
 pub mod frame_rate;
@@ -211,6 +218,7 @@ pub mod tools;
 pub mod update;
 pub mod viewport;
 mod viewport_layout;
+mod worksheet_ui;
 pub mod workspace;
 
 use std::sync::mpsc::Receiver;
@@ -228,6 +236,10 @@ pub use control::{ControlRequest, ControlResponse};
 pub struct UiState {
     /// Toolbar tab: SOLID, SURFACE, MESH, SHEET METAL, PLASTIC, UTILITIES (SKETCH while sketching).
     pub tab: String,
+    /// Optional engineering tool window, opened explicitly like native CAD dialogs.
+    pub engineering_dialog: Option<String>,
+    /// Explicit project-level page; CAD keeps its original workspace layout.
+    pub project_page: String,
     pub show_browser: bool,
     pub show_timeline: bool,
     pub show_grid: bool,
@@ -261,6 +273,8 @@ impl Default for UiState {
     fn default() -> Self {
         UiState {
             tab: "SOLID".into(),
+            engineering_dialog: None,
+            project_page: "cad".into(),
             show_browser: true,
             show_timeline: true,
             show_grid: true,
@@ -725,6 +739,9 @@ impl SolveApp {
     pub(crate) fn finish_command(&mut self, id: &str, r: &Result<Value, String>) {
         match r {
             Ok(v) => {
+                if matches!(id, "studio.view" | "studio.demo") {
+                    self.ui.tab = engineering_studio::tab_for_page(&self.session.studio.page).into();
+                }
                 // Programmatic callers (the control channel, scripts) run outside a render
                 // language scope, so resolve the echo from the saved preference instead of the
                 // thread-local scope. The command's own label is translated too, so the echo
@@ -741,6 +758,7 @@ impl SolveApp {
                     prefs::apply_new_design(self);
                 }
                 if matches!(id, "file.new" | "doc.open" | "doc.recover") {
+                    self.ui.engineering_dialog = None;
                     render_workspace::reset_document(self);
                     self.sketch_choices = sketch_families::Choices::default();
                     dim_view::cancel();
@@ -860,6 +878,11 @@ impl SolveApp {
         if solidcraft_engine::find_command(id).is_some_and(|c| c.info(&self.session).enabled) {
             self.sketch_choices.remember(id);
         }
+        if engineering_studio::start(self, id) {
+            return;
+        }
+        self.ui.engineering_dialog = None;
+        self.ui.project_page = "cad".into();
         if id == "parameters.change" {
             params_dialog::open(self);
             return;
@@ -1472,7 +1495,12 @@ impl SolveApp {
                 return;
             }
         }
+        if self.ui.project_page == "parameters" {
+            worksheet_ui::show(self, ui);
+            return;
+        }
         toolbar::toolbar(self, ui);
+        worksheet_ui::cad_notice(self, ui);
         let show_timeline = self.ui.show_timeline && !render_workspace::active(self);
         let left_timeline = show_timeline && self.preferences.timeline_left;
         if show_timeline && !left_timeline {
@@ -1508,6 +1536,7 @@ impl SolveApp {
             }
         });
         dialogs::show(self, ui.ctx());
+        engineering_studio::show_dialogs(self, ui.ctx());
         issue_report::CadInput::block(self, ui, report_input);
         sketch_palette::show(self, ui.ctx());
         self.resolve_fit(ui.ctx());

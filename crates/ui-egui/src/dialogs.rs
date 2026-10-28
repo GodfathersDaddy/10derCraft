@@ -353,6 +353,7 @@ pub enum Kind {
     /// Insert Part from the standard parts library (`dialogs_parts`).
     Part(crate::dialogs_parts::Pt),
     PartSize(crate::dialogs_part_size::Resize),
+    Gear(crate::dialogs_gear::Gear),
     /// Edit Text: a sketch text's content and placement (`sketch_text`).
     Text(Box<crate::sketch_text::Tx>),
     TextMove(crate::sketch_text_move::TextMove),
@@ -694,6 +695,17 @@ impl Dialog {
                 Kind::Primitive { cmd: "solid.sphere", fields: vec![("diameter", length_default(s, "20"))], operation: 0, at: None },
                 vec![],
             ),
+            "solid.involute_gear" => Dialog::new(
+                Kind::Primitive {
+                    cmd: "solid.involute_gear",
+                    fields: vec![("module", "2 mm".into()), ("teeth", "30".into()),
+                        ("width", "20 mm".into()), ("pressure_angle", "20 deg".into()),
+                        ("radius", "6 mm".into()), ("phase", "0 deg".into()),
+                        ("backlash", "0.04 mm".into()), ("center_x", "0 mm".into()),
+                        ("center_y", "0 mm".into()), ("center_z", "0 mm".into())],
+                    operation: 0, at: None,
+                }, vec![],
+            ),
             "solid.torus" => Dialog::new(
                 Kind::Primitive {
                     cmd: "solid.torus",
@@ -732,6 +744,7 @@ impl Dialog {
                     .or_else(|| crate::dialogs_appearance::start(app, id))
                     .or_else(|| crate::dialogs_motion::start(app, id))
                     .or_else(|| crate::dialogs_parts::start(app, id))
+                    .or_else(|| crate::dialogs_gear::start(app, id))
                     .or_else(|| crate::dialogs_part_size::start(app, id))
                     .or_else(|| crate::sketch_text::start(app, id))
                     .or_else(|| crate::sketch_text_move::start(app, id))
@@ -1592,6 +1605,7 @@ fn title(k: &Kind) -> &'static str {
         Kind::Primitive { cmd, .. } => match *cmd {
             "solid.box" => "BOX",
             "solid.cylinder" => "CYLINDER",
+            "solid.involute_gear" => "Analytic Involute Gear",
             "solid.sphere" => "SPHERE",
             "solid.coil" => "COIL",
             _ => "TORUS",
@@ -1611,6 +1625,7 @@ fn title(k: &Kind) -> &'static str {
         Kind::Motion(k) => k.title(),
         Kind::Part(_) => "INSERT PART",
         Kind::PartSize(_) => "Change Part Size",
+        Kind::Gear(_) => "Gear Design",
         Kind::Text(_) => "EDIT TEXT",
         Kind::TextMove(_) => "MOVE/COPY TEXT",
         Kind::SketchModify(k) => k.title(),
@@ -3156,7 +3171,7 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                             ui.end_row();
                         }
                     }
-                    Kind::Primitive { fields, operation, at, .. } => {
+                    Kind::Primitive { cmd, fields, operation, at } => {
                         for (k, v) in fields.iter_mut() {
                             row_label(ui, k);
                             enter |= field(ui, v);
@@ -3172,8 +3187,13 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                             });
                             ui.end_row();
                         }
-                        row_label(ui, "Operation");
-                        combo(ui, "pr_op", &OP_LABELS, operation);
+                        if *cmd == "solid.involute_gear" {
+                            row_label(ui, "Internal gear");
+                            extra_check(ui, &mut d.extra, "internal");
+                        } else {
+                            row_label(ui, "Operation");
+                            combo(ui, "pr_op", &OP_LABELS, operation);
+                        }
                         ui.end_row();
                     }
                     Kind::Combine { operation, keep_tools } => {
@@ -3220,6 +3240,7 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
                     Kind::Motion(k) => enter |= crate::dialogs_motion::rows(app, ui, k, &mut d.inputs),
                     Kind::Part(k) => enter |= crate::dialogs_parts::rows(app, ui, k, &d.inputs),
                     Kind::PartSize(k) => enter |= crate::dialogs_part_size::rows(app, ui, k),
+                    Kind::Gear(k) => enter |= crate::dialogs_gear::rows(app, ui, k),
                     Kind::Text(k) => enter |= crate::sketch_text::rows(ui, k, &mut d.inputs, &mut d.active),
                     Kind::TextMove(k) => enter |= crate::sketch_text_move::rows(ui, k),
                     Kind::ConfirmDelete { with, fail, .. } => {
@@ -4583,6 +4604,7 @@ fn dialog_commands(app: &SolveApp, d: &Dialog) -> Result<Vec<(String, Value)>, S
         Kind::Motion(k) => return crate::dialogs_motion::commands(app, k, &d.inputs),
         Kind::Part(k) => return crate::dialogs_parts::commands(app, k, &d.inputs),
         Kind::PartSize(k) => return crate::dialogs_part_size::commands(app, k),
+        Kind::Gear(k) => return crate::dialogs_gear::commands(k),
         Kind::Text(k) => return crate::sketch_text::commands(app, k),
         Kind::TextMove(k) => return crate::sketch_text_move::commands(app, k),
     };
@@ -5307,6 +5329,20 @@ pub fn for_feature(app: &SolveApp, id: u64, marker: Option<usize>) -> Option<Dia
             d.kind =
                 Kind::Primitive { cmd: "solid.sphere", fields: vec![("radius", stored_length(s, radius))], operation: op_index(operation), at: None };
             d.extra.insert("center".into(), pt_expr(center));
+            d
+        }
+        FeatureKind::InvoluteGear { center, module, teeth, pressure_angle, width, radius, internal, phase, backlash } => {
+            let mut d = start("solid.involute_gear")?;
+            d.kind = Kind::Primitive {
+                cmd: "solid.involute_gear",
+                fields: vec![("module", stored_length(s, module)), ("teeth", teeth.to_string()),
+                    ("width", stored_length(s, width)), ("pressure_angle", shown_expr(pressure_angle, ValueKind::Angle)),
+                    ("radius", stored_length(s, radius)), ("phase", shown_expr(phase, ValueKind::Angle)),
+                    ("backlash", stored_length(s, backlash)), ("center_x", stored_length(s, &center[0])),
+                    ("center_y", stored_length(s, &center[1])), ("center_z", stored_length(s, &center[2]))],
+                operation: 0, at: None,
+            };
+            d.extra.insert("internal".into(), json!(internal));
             d
         }
         FeatureKind::Torus { center, major, minor, operation } => {

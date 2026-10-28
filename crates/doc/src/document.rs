@@ -613,6 +613,27 @@ pub enum FeatureKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         body: Option<BodyName>,
     },
+    /// A complete analytic tooth profile; changing teeth rebuilds its edge topology.
+    InvoluteGear {
+        #[serde(with = "point_expr")]
+        #[walk(placement)]
+        center: PointExpr,
+        #[walk(length = "Module")]
+        module: Expr,
+        #[walk(unitless = "Teeth")]
+        teeth: Expr,
+        #[walk(angle = "Pressure angle")]
+        pressure_angle: Expr,
+        #[walk(length = "Face width")]
+        width: Expr,
+        #[walk(length = "Bore or outside radius")]
+        radius: Expr,
+        internal: bool,
+        #[walk(angle = "Tooth phase")]
+        phase: Expr,
+        #[walk(length = "Backlash")]
+        backlash: Expr,
+    },
     Box {
         #[serde(with = "point_expr")]
         #[walk(placement)]
@@ -2130,6 +2151,7 @@ impl FeatureKind {
             FeatureKind::Revolve { .. } => "RevolveFeature",
             FeatureKind::Fillet { .. } => "FilletFeature",
             FeatureKind::Chamfer { .. } => "ChamferFeature",
+            FeatureKind::InvoluteGear { .. } => "InvoluteGearFeature",
             FeatureKind::Box { .. } => "BoxFeature",
             FeatureKind::Cylinder { .. } => "CylinderFeature",
             FeatureKind::Sphere { .. } => "SphereFeature",
@@ -2210,6 +2232,7 @@ impl FeatureKind {
             FeatureKind::Revolve { .. } => "Revolve",
             FeatureKind::Fillet { .. } => "Fillet",
             FeatureKind::Chamfer { .. } => "Chamfer",
+            FeatureKind::InvoluteGear { .. } => "InvoluteGear",
             FeatureKind::Box { .. } => "Box",
             FeatureKind::Cylinder { .. } => "Cylinder",
             FeatureKind::Sphere { .. } => "Sphere",

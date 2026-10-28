@@ -11,6 +11,7 @@ fn curve_safe(c: &mt::Curve, depth: usize) -> bool {
         return false;
     }
     match c {
+        mt::Curve::Involute(_) => true,
         mt::Curve::Line(_) => true,
         mt::Curve::BSplineCurve(c) => c.control_points().len() <= 256,
         mt::Curve::NurbsCurve(c) => c.control_points().len() <= 256,
@@ -28,6 +29,7 @@ fn surface_safe(s: &mt::Surface, depth: usize) -> bool {
         return false;
     }
     match s {
+        mt::Surface::InvoluteExtrusion(_) => true,
         mt::Surface::Plane(_) => true,
         mt::Surface::BSplineSurface(s) => s.control_points().iter().map(Vec::len).sum::<usize>() <= 256,
         mt::Surface::NurbsSurface(s) => s.control_points().iter().map(Vec::len).sum::<usize>() <= 256,

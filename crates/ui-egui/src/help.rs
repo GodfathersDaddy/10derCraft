@@ -33,7 +33,7 @@ pub struct HelpState {
 pub fn diagnostics(app: &SolveApp) -> String {
     let renderer = if app.viewport.gpu.is_some() { "GPU" } else { "CPU" };
     format!(
-        "SolidCraft {VERSION} ({COMMIT}, built {BUILD_DATE})\nOS: {} {}\nRenderer: {renderer}{}\nWindow: {}\nDesign: {} ({} features, {} bodies)",
+        "10derCraft {VERSION} ({COMMIT}, built {BUILD_DATE})\nOS: {} {}\nRenderer: {renderer}{}\nWindow: {}\nDesign: {} ({} features, {} bodies)",
         std::env::consts::OS,
         std::env::consts::ARCH,
         app.help.gpu.as_ref().map(|g| format!(", {g}")).unwrap_or_default(),
@@ -74,7 +74,7 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context, anchor: egui::Pos2) {
                 crate::context_menu::menu_frame(ui, |ui| {
                     for (id, label) in [
                         ("docs", "Documentation"),
-                        ("about", "About SolidCraft"),
+                        ("about", "Über 10derCraft"),
                         ("shortcuts", "Keyboard Shortcuts"),
                         ("messages", "Messages…"),
                         ("report", "Report an Issue…"),
@@ -107,12 +107,13 @@ fn about(app: &mut SolveApp, ctx: &egui::Context) {
     }
     let t = Tokens::get();
     let mut open = true;
-    crate::frame::window(ctx, crate::i18n::tr_label("About SolidCraft"), crate::frame::Width::Normal)
+    crate::frame::window(ctx, "Über 10derCraft", crate::frame::Width::Normal)
         .id(egui::Id::new("sc_about"))
         .open(&mut open)
         .default_size(vec2(440.0, 560.0))
         .show(ctx, |ui| {
-            ui.label(RichText::new("SolidCraft").size(22.0).strong());
+            ui.label(RichText::new("10derCraft").size(22.0).strong());
+            ui.label("Basierend auf SolidCraft · tangency-labs/solidcraft");
             ui.label(format!("Version {VERSION} · commit {COMMIT} · built {BUILD_DATE}"));
             ui.label(RichText::new(crate::i18n::tr_label("Open-source parametric 3D CAD in Rust. Licensed MIT OR Apache-2.0.")).color(t.text_dim));
             ui.add_space(6.0);

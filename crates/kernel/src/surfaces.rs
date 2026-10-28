@@ -785,7 +785,7 @@ pub(crate) fn map_control_points(c: &mt::Curve, f: impl Fn(Vec3) -> Vec3) -> Opt
                 .collect();
             mt::Curve::NurbsCurve(mt::NurbsCurve::new(mt::BSplineCurve::new(nb.knot_vec().clone(), pts)))
         }
-        mt::Curve::IntersectionCurve(_) => return None,
+        mt::Curve::IntersectionCurve(_) | mt::Curve::Involute(_) => return None,
     })
 }
 
@@ -971,7 +971,7 @@ pub fn thicken(body: &Body, thickness: f64, symmetric: bool) -> Result<Body> {
                     let (sa, sb) = (riser(le.front(), he.front()), riser(le.back(), he.back()));
                     // A → B low, B → B' up, B' → A' high back, A' → A down.
                     let wire: mt::Wire = vec![le.clone(), sb, he.inverse(), sa.inverse()].into();
-                    let ruled = mt::builder::homotopy(&le, &he);
+                    let ruled = mt::builder::homotopy(&le, &he).map_err(|e| KernelError::Invalid(e.to_string()))?;
                     let surf = ruled.surface();
                     // The wall's outward normal: across the edge, away from the face.
                     let c = le.oriented_curve();
@@ -1060,7 +1060,7 @@ pub fn thicken(body: &Body, thickness: f64, symmetric: bool) -> Result<Body> {
         };
         for (id, _side, ea, eb) in gaps {
             let wire: mt::Wire = vec![ea.clone(), link(ea.back(), eb.back()), eb.inverse(), link(eb.front(), ea.front())].into();
-            let surf = mt::builder::homotopy(&ea, &eb).surface();
+            let surf = mt::builder::homotopy(&ea, &eb).map_err(|e| KernelError::Invalid(e.to_string()))?.surface();
             let wall = mt::Face::new_unchecked(vec![wire], surf);
             let wall = if used_forward(&out, &ea).unwrap_or(false) { wall.inverse() } else { wall };
             out.push(wall);

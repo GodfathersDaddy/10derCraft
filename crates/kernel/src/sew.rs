@@ -939,7 +939,7 @@ fn curved(mut surf: mt::Surface, wires: Vec<mt::Wire>, probe: Option<(Vec3, Vec3
 /// the centre at the origin the same face is 1e-14 mm out at most.
 fn plane_about_the_mean(wires: &[mt::Wire]) -> Option<mt::Plane> {
     let (mut sum, mut count) = (Vec3::ZERO, 0usize);
-    for p in wires.iter().flat_map(|w| w.edge_iter()).flat_map(|e| e.oriented_curve().lift_up().control_points().clone()) {
+    for p in wires.iter().flat_map(|w| w.edge_iter()).flat_map(|e| e.oriented_curve().lift_up().ok().map(|c| c.control_points().clone()).unwrap_or_default()) {
         sum += Vec3::new(p.x / p.w, p.y / p.w, p.z / p.w);
         count += 1;
     }

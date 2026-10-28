@@ -1179,7 +1179,8 @@ fn redefine(s: &mut Session, p: &Value) -> Result<Value> {
         .any(|candidate| candidate.id == spec.id)
         || matches!(
             spec.id,
-            "sheet.flange"
+            "solid.involute_gear"
+                | "sheet.flange"
                 | "sheet.hem"
                 | "sheet.perforate"
                 | "sheet.fold"

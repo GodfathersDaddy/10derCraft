@@ -5441,6 +5441,14 @@ fn eval_feature(doc: &Document, vals: &BTreeMap<String, Value>, f: &Feature, st:
             }
             Ok(())
         }
+        FeatureKind::InvoluteGear {center,module,teeth,pressure_angle,width,radius,internal,phase,backlash} => {
+            let z=val(vals,teeth,Kind::Unitless)?;
+            if !(18. ..=240.).contains(&z) || (z-z.round()).abs()>1e-9 {return Err(DocError::Invalid("gear teeth must be an integer in 18..240".into()));}
+            let b=kernel::involute_gear(kernel::InvoluteGear {center:point(vals,center)?,module:val(vals,module,Kind::Length)?,teeth:z as usize,
+                pressure_angle:val(vals,pressure_angle,Kind::Angle)?,width:val(vals,width,Kind::Length)?,radius:val(vals,radius,Kind::Length)?,
+                internal:*internal,phase:val(vals,phase,Kind::Angle)?,backlash:val(vals,backlash,Kind::Length)?})?;
+            apply_op(st,f,vec![b],Operation::NewBody,&[])
+        }
         FeatureKind::Box { corner, length, width, height, operation } => {
             let s = Vec3::new(val(vals, length, Kind::Length)?, val(vals, width, Kind::Length)?, val(vals, height, Kind::Length)?);
             let corner = point(vals, corner)?;

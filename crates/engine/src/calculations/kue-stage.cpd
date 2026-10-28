@@ -1,0 +1,309 @@
+'KUE Windkraftgetriebe - Berechnung aller Stufen, CAD nur erste Stufe
+'Angabe_KUE_Teil_II_WS2023_2024.pdf, Seiten 6-10
+'Windkraft- und Aufbauvariante werden laut Angabe getrennt zugeteilt
+Variante = 1
+#if Variante ≡ 1
+P_Rotor = 1000kW
+n_Rotor = 22/min
+n_Generator_Ziel = 1000/min
+eta_1 = 0.995
+eta_2 = 0.99
+eta_SS = 0.975
+i_SS = 0.34
+#end if
+#if Variante ≡ 2
+P_Rotor = 500kW
+n_Rotor = 30/min
+n_Generator_Ziel = 1200/min
+eta_1 = 0.995
+eta_2 = 0.99
+eta_SS = 0.97
+i_SS = 0.35
+#end if
+#if Variante ≡ 3
+P_Rotor = 300kW
+n_Rotor = 40/min
+n_Generator_Ziel = 1500/min
+eta_1 = 0.99
+eta_2 = 0.98
+eta_SS = 0.965
+i_SS = 0.36
+#end if
+#if Variante ≡ 4
+P_Rotor = 100kW
+n_Rotor = 60/min
+n_Generator_Ziel = 1800/min
+eta_1 = 0.99
+eta_2 = 0.98
+eta_SS = 0.96
+i_SS = 0.38
+#end if
+'Aufbauvariante unabhaengig von der Windkraftvariante
+Aufbauvariante = 1
+#if Aufbauvariante ≡ 1
+mode_1 = 1
+mode_2 = 1
+#end if
+#if Aufbauvariante ≡ 2
+mode_1 = 1
+mode_2 = 2
+#end if
+#if Aufbauvariante ≡ 3
+mode_1 = 2
+mode_2 = 1
+#end if
+#if Aufbauvariante ≡ 4
+mode_1 = 2
+mode_2 = 2
+#end if
+'T_in direkt fuer eigene Drehmomentlastfaelle ersetzbar
+K_A = 1.1
+n_in = n_Rotor
+T_in = K_A*P_Rotor/(2*pi*n_in)
+R_Ziel = 3.4
+z_s = 30
+z_s2 = 30
+n_Planeten = 3
+alpha_grad = 20
+breitenfaktor = 15
+'Vorauslegung, kein ISO-6336-Festigkeitsnachweis; konservative Lastaufteilung
+sigma_F_zul = 160N/mm^2
+Y_F = 0.30
+K_gamma = 1.25
+sigma_Bolzen_zul = 200N/mm^2
+tau_Welle_zul = 60N/mm^2
+E_Stahl = 210000N/mm^2
+delta_Bolzen_zul = 0.04mm
+theta_Bolzen_zul = 0.005
+'Verzahnung: ungeaendertes Bezugsprofil, gerade Zaehne; ganzzahlige Montagebedingung
+offset_1 = 3-mode_1
+offset_2 = 3-mode_2
+Montagerest_1 = 3*ceiling(z_s/3)-z_s
+z_p = Montagerest_1+3*round((z_s*(R_Ziel-offset_1)/2-Montagerest_1)/3)
+z_r = z_s+2*z_p
+R_1 = offset_1+2*z_p/z_s
+#if abs(R_1-round(R_1)) < 0.000001
+z_p = z_p-3
+z_r = z_s+2*z_p
+R_1 = offset_1+2*z_p/z_s
+#end if
+R_2_Ziel = n_Generator_Ziel/n_in*i_SS/R_1
+Montagerest_2 = 3*ceiling(z_s2/3)-z_s2
+z_p2 = Montagerest_2+3*round((z_s2*(R_2_Ziel-offset_2)/2-Montagerest_2)/3)
+z_r2 = z_s2+2*z_p2
+R_2 = offset_2+2*z_p2/z_s2
+#if abs(R_2-round(R_2)) < 0.000001
+#if R_2_Ziel > R_2
+z_p2 = z_p2+3
+#else
+z_p2 = z_p2-3
+#end if
+z_r2 = z_s2+2*z_p2
+R_2 = offset_2+2*z_p2/z_s2
+#end if
+i_1 = 1/R_1
+i_2 = 1/R_2
+i_gesamt = i_1*i_2*i_SS
+Drehsinn_1 = 3-2*mode_1
+Drehsinn_2 = 3-2*mode_2
+n_1 = n_in*R_1*Drehsinn_1
+n_2 = n_1*R_2*Drehsinn_2
+n_Generator = n_2/i_SS
+Drehzahlabweichung = abs(n_Generator)/n_Generator_Ziel-1
+P_Eingang = T_in*2*pi*n_in
+P_1 = P_Eingang*eta_1
+P_2 = P_1*eta_2
+P_Generator = P_2*eta_SS
+T_1 = T_in*eta_1/(R_1*Drehsinn_1)
+T_2 = T_1*eta_2/(R_2*Drehsinn_2)
+T_Generator = T_2*eta_SS*i_SS
+'Einfaches Zahnfussmodell Ft/(b*m*Y_F); keine Hertz-/Ermuedungsfreigabe
+T_Sonne_Auslegung = T_in/R_1
+modul_min = (2*K_gamma*T_Sonne_Auslegung/(n_Planeten*z_s*breitenfaktor*Y_F*sigma_F_zul))^(1/3)
+'Bevorzugte Modulliste; manuelle Wahl bleibt moeglich
+modul_auto = 200mm
+#if modul_min ≤ 100mm
+modul_auto = 100mm
+#end if
+#if modul_min ≤ 80mm
+modul_auto = 80mm
+#end if
+#if modul_min ≤ 63mm
+modul_auto = 63mm
+#end if
+#if modul_min ≤ 50mm
+modul_auto = 50mm
+#end if
+#if modul_min ≤ 40mm
+modul_auto = 40mm
+#end if
+#if modul_min ≤ 32mm
+modul_auto = 32mm
+#end if
+#if modul_min ≤ 25mm
+modul_auto = 25mm
+#end if
+#if modul_min ≤ 20mm
+modul_auto = 20mm
+#end if
+#if modul_min ≤ 16mm
+modul_auto = 16mm
+#end if
+#if modul_min ≤ 12mm
+modul_auto = 12mm
+#end if
+#if modul_min ≤ 10mm
+modul_auto = 10mm
+#end if
+#if modul_min ≤ 8mm
+modul_auto = 8mm
+#end if
+#if modul_min ≤ 6mm
+modul_auto = 6mm
+#end if
+#if modul_min ≤ 5mm
+modul_auto = 5mm
+#end if
+#if modul_min ≤ 4mm
+modul_auto = 4mm
+#end if
+#if modul_min ≤ 3mm
+modul_auto = 3mm
+#end if
+#if modul_min ≤ 2.5mm
+modul_auto = 2.5mm
+#end if
+#if modul_min ≤ 2mm
+modul_auto = 2mm
+#end if
+#if modul_min ≤ 1.5mm
+modul_auto = 1.5mm
+#end if
+#if modul_min ≤ 1.25mm
+modul_auto = 1.25mm
+#end if
+#if modul_min ≤ 1mm
+modul_auto = 1mm
+#end if
+#if modul_min ≤ 0.8mm
+modul_auto = 0.8mm
+#end if
+#if modul_min ≤ 0.6mm
+modul_auto = 0.6mm
+#end if
+#if modul_min ≤ 0.5mm
+modul_auto = 0.5mm
+#end if
+modul = modul_auto
+modul2_min = (2*K_gamma*abs(T_1/R_2)/(n_Planeten*z_s2*breitenfaktor*Y_F*sigma_F_zul))^(1/3)
+'Bevorzugte Modulliste; manuelle Wahl bleibt moeglich
+modul2_auto = 200mm
+#if modul2_min ≤ 100mm
+modul2_auto = 100mm
+#end if
+#if modul2_min ≤ 80mm
+modul2_auto = 80mm
+#end if
+#if modul2_min ≤ 63mm
+modul2_auto = 63mm
+#end if
+#if modul2_min ≤ 50mm
+modul2_auto = 50mm
+#end if
+#if modul2_min ≤ 40mm
+modul2_auto = 40mm
+#end if
+#if modul2_min ≤ 32mm
+modul2_auto = 32mm
+#end if
+#if modul2_min ≤ 25mm
+modul2_auto = 25mm
+#end if
+#if modul2_min ≤ 20mm
+modul2_auto = 20mm
+#end if
+#if modul2_min ≤ 16mm
+modul2_auto = 16mm
+#end if
+#if modul2_min ≤ 12mm
+modul2_auto = 12mm
+#end if
+#if modul2_min ≤ 10mm
+modul2_auto = 10mm
+#end if
+#if modul2_min ≤ 8mm
+modul2_auto = 8mm
+#end if
+#if modul2_min ≤ 6mm
+modul2_auto = 6mm
+#end if
+#if modul2_min ≤ 5mm
+modul2_auto = 5mm
+#end if
+#if modul2_min ≤ 4mm
+modul2_auto = 4mm
+#end if
+#if modul2_min ≤ 3mm
+modul2_auto = 3mm
+#end if
+#if modul2_min ≤ 2.5mm
+modul2_auto = 2.5mm
+#end if
+#if modul2_min ≤ 2mm
+modul2_auto = 2mm
+#end if
+#if modul2_min ≤ 1.5mm
+modul2_auto = 1.5mm
+#end if
+#if modul2_min ≤ 1.25mm
+modul2_auto = 1.25mm
+#end if
+#if modul2_min ≤ 1mm
+modul2_auto = 1mm
+#end if
+#if modul2_min ≤ 0.8mm
+modul2_auto = 0.8mm
+#end if
+#if modul2_min ≤ 0.6mm
+modul2_auto = 0.6mm
+#end if
+#if modul2_min ≤ 0.5mm
+modul2_auto = 0.5mm
+#end if
+modul2 = modul2_auto
+b = breitenfaktor*modul
+a = modul*(z_s+z_p)/2
+d_s = modul*z_s
+d_p = modul*z_p
+d_r = modul*z_r
+F_t = 2*T_Sonne_Auslegung/(n_Planeten*d_s)
+sigma_F = K_gamma*F_t/(b*modul*Y_F)
+F_Bolzen = 2*K_gamma*F_t
+Spiel_axial = 0.2*modul
+Platte = 2*modul
+Bolzenspanne = b+2*Spiel_axial+Platte
+d_Bolzen_Biegung = (8*F_Bolzen*Bolzenspanne/(pi*sigma_Bolzen_zul))^(1/3)
+d_Bolzen_Durchbiegung = (4*F_Bolzen*Bolzenspanne^3/(3*pi*E_Stahl*delta_Bolzen_zul))^(1/4)
+d_Bolzen_Neigung = (4*F_Bolzen*Bolzenspanne^2/(pi*E_Stahl*theta_Bolzen_zul))^(1/4)
+pin_r = ceiling(max(d_Bolzen_Biegung;d_Bolzen_Durchbiegung;d_Bolzen_Neigung)/2/mm)*mm
+bore_p = pin_r+modul
+Wand_Planet = modul*(z_p/2-1.25)-bore_p
+bore_s = ceiling((16*T_Sonne_Auslegung/(pi*tau_Welle_zul))^(1/3)/2/mm)*mm
+hub_r = ceiling((16*T_in/(pi*tau_Welle_zul))^(1/3)/2/mm)*mm+modul
+ring_outer = modul*(z_r/2+6)
+Zahnflankenspiel = 0.02*modul
+Nachbarabstand = sqrt(3)*a-modul*(z_p+2)
+I_Bolzen = pi*(2*pin_r)^4/64
+delta_Bolzen = F_Bolzen*Bolzenspanne^3/(48*E_Stahl*I_Bolzen)
+theta_Bolzen = F_Bolzen*Bolzenspanne^2/(16*E_Stahl*I_Bolzen)
+sigma_Bolzen = 8*F_Bolzen*Bolzenspanne/(pi*(2*pin_r)^3)
+'Alle Eingaben und Ergebnisse bleiben im CAD-Projekt; CAD erst bewusst aktualisieren
+
+S_Zahn = sigma_F_zul/sigma_F
+S_Bolzen = sigma_Bolzen_zul/sigma_Bolzen
+S_Durchbiegung = delta_Bolzen_zul/delta_Bolzen
+S_Neigung = theta_Bolzen_zul/theta_Bolzen
+Wandreserve = Wand_Planet/modul
+Montageindex = (z_s+z_r)/n_Planeten
+n_eingang_rpm = n_in*min
+T_eingang_Nm = T_in/(N*m)

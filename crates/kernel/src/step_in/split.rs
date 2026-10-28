@@ -76,7 +76,7 @@ fn closed_dirs(s: &mt::Surface, periodic: bool) -> Vec<(Dir, f64, f64)> {
             }
             out
         }
-        mt::Surface::Plane(_) => vec![],
+        mt::Surface::Plane(_) | mt::Surface::InvoluteExtrusion(_) => vec![],
     }
 }
 
@@ -234,7 +234,7 @@ fn iso_curve(s: &mt::Surface, d: Dir, mid: f64, q1: mt::Point3, q2: mt::Point3, 
             }
             Ok(c)
         }
-        mt::Surface::Plane(_) => Err("planes do not wrap".into()),
+        mt::Surface::Plane(_) | mt::Surface::InvoluteExtrusion(_) => Err("this surface does not wrap".into()),
     }
 }
 

@@ -23,6 +23,8 @@ pub mod sample;
 pub mod schema;
 mod slicer_icon;
 pub mod slicers;
+pub mod studio;
+pub mod studio_beam;
 pub mod timing;
 pub mod view;
 
@@ -213,6 +215,8 @@ impl WorldCache {
 
 /// An editing session on one design.
 pub struct Session {
+    /// Transient interaction prototype; never written into a CAD design.
+    pub studio: studio::State,
     pub doc: Arc<Document>,
     pub model: Model,
     pub undo: Vec<Snapshot>,
@@ -366,6 +370,7 @@ impl Session {
         let mut model = Model::new();
         model.evaluate(&doc);
         Session {
+            studio: Default::default(),
             saved: doc.clone(),
             doc,
             model,
@@ -841,6 +846,7 @@ impl Session {
     /// commands on without touching this one.
     pub fn scratch(&self) -> Session {
         Session {
+            studio: self.studio.clone(),
             doc: self.doc.clone(),
             model: self.model.clone(),
             undo: Vec::new(),

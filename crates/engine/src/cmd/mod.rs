@@ -79,12 +79,31 @@ mod sketch_import;
 mod sketch_inspect;
 mod sketch_modify;
 mod sketch_project;
+mod studio;
 mod surface;
 mod surface_analysis;
 mod surface_boundary;
 mod surface_match;
 mod view_dxf;
 mod view_navigation;
+mod involute;
+mod gear;
+mod gear_projects;
+mod mechanics;
+mod mks;
+mod mks_mass;
+mod mks_simulation;
+mod mks_local;
+mod mks_result_export;
+mod robot;
+mod robot_fem;
+mod suite_examples;
+pub use mks_result_export::assembly_result_scene;
+mod planetary;
+mod worksheet;
+mod worksheet_references;
+mod worksheet_calcpad;
+mod worksheet_variants;
 
 use serde::Serialize;
 use serde_json::Value;
@@ -302,6 +321,17 @@ pub fn command_specs() -> Vec<&'static CommandSpec> {
     v.extend(view_dxf::COMMANDS.iter());
     v.extend(diagnostics::COMMANDS.iter());
     v.extend(render::COMMANDS.iter());
+    v.extend(studio::COMMANDS.iter());
+    v.extend(worksheet::COMMANDS.iter());
+    v.extend(involute::COMMANDS.iter());
+    v.extend(gear::COMMANDS.iter());
+    v.extend(mechanics::COMMANDS.iter());
+    v.extend(mks::COMMANDS.iter());
+    v.extend(mks_simulation::COMMANDS.iter());
+    v.extend(mks_result_export::COMMANDS.iter());
+    v.extend(robot::COMMANDS.iter());
+    v.extend(suite_examples::COMMANDS.iter());
+    v.extend(planetary::COMMANDS.iter());
     v
 }
 

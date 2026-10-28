@@ -457,7 +457,7 @@ fn app_viewport() -> Result<egui::ViewportBuilder, eframe::Error> {
     let icon =
         egui::IconData { rgba: app_icon::rgba(64).map_err(|e| eframe::Error::AppCreation(std::io::Error::other(e).into()))?, width: 64, height: 64 };
     Ok(egui::ViewportBuilder::default()
-        .with_title("SolidCraft")
+        .with_title("10derCraft")
         .with_icon(icon)
         .with_inner_size([1600.0, 1000.0])
         .with_min_inner_size([960.0, 600.0])
@@ -478,11 +478,15 @@ fn main() -> eframe::Result {
     let mut control_port: Option<u16> = solidcraft_engine::geom::env::var("CONTROL_PORT").and_then(|p| p.parse().ok());
     let mut files = Vec::new();
     let mut sample = false;
+    let mut studio = false;
+    let mut worksheet = false;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
             "--control" => control_port = args.next().and_then(|p| p.parse().ok()),
             "--sample" => sample = true,
+            "--studio" => studio = true,
+            "--worksheet" => worksheet = true,
             "--safe-mode" => safe_mode = true,
             "--version" | "-V" => {
                 println!("solidcraft {}", env!("CARGO_PKG_VERSION"));
@@ -502,7 +506,9 @@ fn main() -> eframe::Result {
                 return Ok(());
             }
             "--help" | "-h" => {
-                println!("usage: solidcraft [--control PORT] [--sample] [--crash-log] [--safe-mode] [design.solidcraft | part.step]");
+                println!(
+                    "usage: solidcraft [--control PORT] [--sample] [--studio] [--worksheet] [--crash-log] [--safe-mode] [design.solidcraft | part.step]"
+                );
                 return Ok(());
             }
             _ => files.push(a),
@@ -584,7 +590,7 @@ fn main() -> eframe::Result {
     let created_in_app = created.clone();
     let starting = settings.clone();
     let result = eframe::run_native(
-        "SolidCraft",
+        "10derCraft",
         options,
         Box::new(move |cc| {
             created_in_app.store(true, std::sync::atomic::Ordering::SeqCst);
@@ -640,6 +646,19 @@ fn main() -> eframe::Result {
                 app.session.mark_saved();
                 app.session.undo.clear();
             }
+            if studio && files.is_empty() && !sample {
+                match app.session.execute("studio.demo", &serde_json::json!({})) {
+                    Ok(_) => {
+                        app.home.open = false;
+                        app.cam.yaw = -0.78;
+                        app.cam.pitch = 0.38;
+                        app.fit_view();
+                        app.session.mark_saved();
+                        app.session.undo.clear();
+                    }
+                    Err(error) => app.set_status(format!("Engineering prototype: {error}"), true),
+                }
+            }
             // A launch from Finder: its files arrived before the window.
             #[cfg(target_os = "macos")]
             let files = {
@@ -656,7 +675,13 @@ fn main() -> eframe::Result {
             }
             // No design given: the start page (not when driven over the control channel, whose
             // clients expect the design view; `ui.home` shows it there).
-            if files.is_empty() && !sample && control_port.is_none() {
+            if worksheet {
+                // Files load asynchronously. Interactive starts are gated while loading,
+                // so choose the initial page here; its definitions follow the loaded project.
+                app.ui.project_page = "parameters".into();
+                app.home.open = false;
+            }
+            if files.is_empty() && !sample && !studio && !worksheet && control_port.is_none() {
                 let rev = app.session.revision;
                 app.home.show(rev);
             }

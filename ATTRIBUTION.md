@@ -480,6 +480,7 @@ copied into SolidCraft.
 
 | Directory | Source | Licence | Changes |
 |---|---|---|---|
+| vendor/truck-modeling | truck-modeling 0.6.0, https://github.com/ricosjp/truck (RICOS Co. Ltd.) | Apache-2.0 | own analytic involute curve and extrusion surface, exact translation sweep, explicit refusal of polynomial conversion for non-polynomial curves (vendor/README.md) |
 | vendor/truck-meshalgo | truck-meshalgo 0.4.0, https://github.com/ricosjp/truck (RICOS Co. Ltd.) | Apache-2.0 | meshing: bounded parameter searches, collapsed-boundary projection, subdivision and provisional fixed-grid previews (vendor/README.md) |
 | vendor/truck-stepio | truck-stepio 0.3.0, https://github.com/ricosjp/truck (RICOS Co. Ltd.) | Apache-2.0 | STEP writer: intersection-curve surfaces written at unique ids (vendor/README.md) |
 | vendor/truck-shapeops | truck-shapeops 0.4.0, https://github.com/ricosjp/truck (RICOS Co. Ltd.) | Apache-2.0 | robust meshing and nearest-parameter fallback in booleans; degenerate intersection-curve rejection; face and edge history of booleans; trace macro; corner choice at vertices several intersection curves end on; reuse of an operand's meshes (vendor/README.md) |
@@ -498,3 +499,12 @@ A frame whose meshes the GPU refuses to stage (device lost or out of memory) is
 skipped with a warning instead of panicking (#1469).
 Paint callbacks are prepared only after a drawable is acquired, so a skipped
 surface frame cannot strand cached meshes without their GPU initialization.
+
+## Optional local calculation engine
+
+CalcpadCE, https://github.com/imartincei/CalcpadCE, revision
+`0cf438f7d4a78a7ee50724eefb712c23f2ec09c5`, MIT, copyright CalcpadCE
+Contributors and Nedelcho Ganchovski. The separately built local console helper uses
+Calcpad.Core and Calcpad.OpenXml. Our integration adds a scalar export partial class
+and a capture call before parser cleanup. No upstream UI assets are reused.
+Build details and dependency information: `../integrations/calcpad-local/README.md`.

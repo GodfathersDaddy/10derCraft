@@ -1,0 +1,16 @@
+'Roboterarm - lokale Berechnung, native CAD-Referenzen
+'Illustratives Modell, keine Herstellerdaten oder Festigkeitsfreigabe
+R_Oberarm = 77mm
+R_Unterarm = 65mm
+E_MPa = 70000
+nu = 0.33
+F_TCP_N = 100
+Grenze_TCP = 1mm
+Hub_A1 = 8deg
+Hub_A2 = -6deg
+Hub_A3 = 10deg
+Hub_A4 = 5deg
+Hub_A5 = -8deg
+Hub_A6 = 12deg
+I_Oberarm = pi*R_Oberarm^4/4
+I_Unterarm = pi*R_Unterarm^4/4

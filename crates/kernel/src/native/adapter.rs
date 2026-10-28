@@ -53,6 +53,7 @@ fn compatible_curve(c: &b::Curve) -> Result<()> {
 }
 fn compatible_surface(s: &b::Surface) -> Result<()> {
     match s {
+        b::Surface::InvoluteExtrusion { profile, .. } => compatible_curve(profile),
         b::Surface::Plane { origin, u_axis, v_axis } => {
             let plane = mt::Plane::new(p(*origin), p(*origin) + v(*u_axis), p(*origin) + v(*v_axis));
             if vector(plane.u_axis()) != *u_axis || vector(plane.v_axis()) != *v_axis {
@@ -191,6 +192,13 @@ fn reverse_wire(wire: &mut [b::EdgeUse]) {
 fn save_curve(c: &mt::Curve, d: usize) -> Result<b::Curve> {
     depth(d)?;
     Ok(match c {
+        mt::Curve::Involute(c) => b::Curve::Involute {
+            origin: point(c.origin),
+            x_axis: vector(c.x_axis),
+            y_axis: vector(c.y_axis),
+            base_radius: c.base_radius,
+            parameter: c.parameter,
+        },
         mt::Curve::Line(c) => b::Curve::Line { start: point(c.0), end: point(c.1) },
         mt::Curve::BSplineCurve(c) => {
             b::Curve::Spline { knots: c.knot_vec().iter().copied().collect(), points: c.control_points().iter().copied().map(point).collect() }
@@ -245,6 +253,11 @@ struct Axis {
 fn save_surface(s: &mt::Surface, d: usize) -> Result<b::Surface> {
     depth(d)?;
     Ok(match s {
+        mt::Surface::InvoluteExtrusion(s) => b::Surface::InvoluteExtrusion {
+            profile: Box::new(save_curve(&mt::Curve::Involute(s.profile.clone()), d + 1)?),
+            direction: vector(s.direction),
+            swapped: s.swapped,
+        },
         mt::Surface::Plane(s) => {
             let PlanePoints { o, p, q } = serde_json::from_value(serde_json::to_value(s).map_err(invalid)?).map_err(invalid)?;
             b::Surface::PlaneThrough { origin: point(o), u_point: point(p), v_point: point(q) }
@@ -273,6 +286,9 @@ fn save_surface(s: &mt::Surface, d: usize) -> Result<b::Surface> {
 }
 fn load_curve(c: b::Curve) -> Result<mt::Curve> {
     Ok(match c {
+        b::Curve::Involute { origin, x_axis, y_axis, base_radius, parameter } => {
+            mt::Curve::Involute(mt::InvoluteCurve { origin: p(origin), x_axis: v(x_axis), y_axis: v(y_axis), base_radius, parameter })
+        }
         b::Curve::Line { start, end } => mt::Curve::Line(mt::Line(p(start), p(end))),
         b::Curve::CircleArc { frame, radius, angle } => arc(&frame, [radius, radius], angle)?,
         b::Curve::EllipseArc { frame, radii, angle } => arc(&frame, radii, angle)?,
@@ -301,6 +317,12 @@ fn load_curve(c: b::Curve) -> Result<mt::Curve> {
 }
 fn load_surface(s: b::Surface) -> Result<mt::Surface> {
     Ok(match s {
+        b::Surface::InvoluteExtrusion { profile, direction, swapped } => {
+            let mt::Curve::Involute(profile) = load_curve(*profile)? else {
+                return Err(invalid("involute surface profile"));
+            };
+            mt::Surface::InvoluteExtrusion(mt::InvoluteSurface { profile, direction: v(direction), swapped })
+        }
         b::Surface::Plane { origin, u_axis, v_axis } => mt::Surface::Plane(mt::Plane::new(p(origin), p(origin) + v(u_axis), p(origin) + v(v_axis))),
         b::Surface::Spline { u_knots, v_knots, points } => mt::Surface::BSplineSurface(
             mt::BSplineSurface::try_new((u_knots.into(), v_knots.into()), points.into_iter().map(|r| r.into_iter().map(p).collect()).collect())

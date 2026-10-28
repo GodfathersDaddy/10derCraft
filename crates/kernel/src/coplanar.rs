@@ -1120,7 +1120,7 @@ fn hull_box(f: &mt::Face) -> Option<Aabb3> {
                     bb.add(Vec3::new(p.x / p.w, p.y / p.w, p.z / p.w));
                 }
             }
-            mt::Curve::IntersectionCurve(_) => return None,
+            mt::Curve::IntersectionCurve(_) | mt::Curve::Involute(_) => return None,
         }
     }
     (!bb.is_empty() && bb.min.is_finite() && bb.max.is_finite()).then_some(bb)

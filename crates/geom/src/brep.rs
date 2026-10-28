@@ -58,6 +58,14 @@ pub struct Frame {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Curve {
+    /// Exact circular involute: o + rb * (x*(cos(t)+t*sin(t)) + y*(sin(t)-t*cos(t))).
+    Involute {
+        origin: [f64; 3],
+        x_axis: [f64; 3],
+        y_axis: [f64; 3],
+        base_radius: f64,
+        parameter: [f64; 2],
+    },
     Line {
         start: [f64; 3],
         end: [f64; 3],
@@ -101,6 +109,12 @@ pub enum Curve {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Surface {
+    /// Exact extrusion of an involute; the parameters are exchanged when swapped.
+    InvoluteExtrusion {
+        profile: Box<Curve>,
+        direction: [f64; 3],
+        swapped: bool,
+    },
     Plane {
         origin: [f64; 3],
         u_axis: [f64; 3],
@@ -242,6 +256,15 @@ fn curve(c: &Curve, depth: usize, budget: &mut Budget) -> Result<()> {
     require(depth <= MAX_DEPTH, "geometry depth")?;
     budget.add(1)?;
     match c {
+        Curve::Involute { origin, x_axis, y_axis, base_radius, parameter } => {
+            points(&[*origin, *x_axis, *y_axis], budget)?;
+            radius(*base_radius)?;
+            require(vector(*x_axis).cross(vector(*y_axis)).len() > 1e-12, "degenerate involute frame")?;
+            require(
+                parameter.iter().all(|t| t.is_finite() && (0.0..=100.).contains(t)) && (parameter[1] - parameter[0]).abs() > 1e-14,
+                "involute interval",
+            )
+        }
         Curve::Line { start, end } => {
             points(&[*start, *end], budget)?;
             require(start != end, "collapsed line")
@@ -304,6 +327,12 @@ fn surface(s: &Surface, depth: usize, budget: &mut Budget) -> Result<()> {
     require(depth <= MAX_DEPTH, "geometry depth")?;
     budget.add(1)?;
     match s {
+        Surface::InvoluteExtrusion { profile, direction, .. } => {
+            require(matches!(**profile, Curve::Involute { .. }), "involute extrusion profile")?;
+            curve(profile, depth + 1, budget)?;
+            points(&[*direction], budget)?;
+            require(vector(*direction).len() > 1e-12, "involute extrusion direction")
+        }
         Surface::Plane { origin, u_axis, v_axis } => {
             points(&[*origin, *u_axis, *v_axis], budget)?;
             require(vector(*u_axis).cross(vector(*v_axis)).len() > 1e-12, "degenerate plane")

@@ -380,9 +380,34 @@ pub fn tabs(app: &mut SolveApp, ui: &mut egui::Ui, r: Rect, x0: f32, x1: f32) {
     );
     crate::scenario::publish_handle("tab:home", home.center());
     if response.clicked() && !app.file_load.busy() {
+        app.ui.project_page = "cad".into();
+        app.ui.engineering_dialog = None;
         app.home.show(app.session.revision);
     }
-    let x0 = x0 + 70.0;
+    let mut page_x = x0 + 70.0;
+    for (page, label, width) in [("parameters", "Parameter", 92.), ("cad", "CAD", 54.), ("fem", "FEM", 54.), ("mks", "MKS", 54.)] {
+        let rect = Rect::from_min_size(pos2(page_x, r.top() + 5.), vec2(width, r.height() - 5.));
+        let response = ui.interact(rect, ui.id().with(("project_page", page)), Sense::click());
+        let active = !app.home.open && app.ui.project_page == page;
+        tab_shape(ui.painter(), &t, rect, active, response.hovered());
+        ui.painter().text(rect.center(), Align2::CENTER_CENTER, label, FontId::proportional(13.), if active { t.text } else { t.app_bar_text });
+        crate::scenario::publish_handle(&format!("project:{page}"), rect.center());
+        if response.clicked() && !app.file_load.busy() {
+            app.home.open = false;
+            app.ui.engineering_dialog = None;
+            match page {
+                "parameters" => app.start("worksheet.open"),
+                "fem" => app.start("studio.fem.open"),
+                "mks" => app.start("studio.system.open"),
+                _ => {
+                    let _ = app.run("studio.view", json!({"page":"cad"}));
+                }
+            }
+            app.ui.project_page = page.into();
+        }
+        page_x += width + 2.;
+    }
+    let x0 = page_x + 6.;
     let info = tabs_info(app);
     let n = info.len();
     let (first, shown, w) = layout(n, app.docs.active, x1 - x0);

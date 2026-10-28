@@ -1282,7 +1282,7 @@ fn taper_loop(levels: &[(Plane, &[Option<Seg2>])], numbers: impl Fn(usize) -> Ve
                             sides.push((flat(wire)?, prov.clone()));
                             continue;
                         }
-                        let surface = mt::BSplineSurface::homotopy(e.oriented_curve().lift_up(), t.oriented_curve().lift_up());
+                        let surface = mt::BSplineSurface::homotopy(e.oriented_curve().lift_up().map_err(|e| KernelError::Invalid(e.to_string()))?, t.oriented_curve().lift_up().map_err(|e| KernelError::Invalid(e.to_string()))?);
                         sides.push((mt::Face::new(vec![wire], mt::Surface::NurbsSurface(mt::NurbsSurface::new(surface))), prov.clone()));
                     }
                 }

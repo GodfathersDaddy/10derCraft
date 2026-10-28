@@ -29,6 +29,7 @@ type Made = (String, Option<egui::ColorImage>, Option<Session>);
 
 #[derive(Default)]
 pub struct HomeState {
+    suite_examples:Option<Vec<serde_json::Value>>,
     pub open: bool,
     /// Recent design paths, newest first (kept in the preferences).
     pub recent: Vec<String>,
@@ -435,6 +436,14 @@ pub fn open_recent(app: &mut SolveApp, path: &str) {
 
 /// The page itself (in place of the toolbar, browser and viewport).
 pub fn show(app: &mut SolveApp, ui: &mut egui::Ui) {
+    if app.home.suite_examples.is_none(){
+        match app.session.execute("suite.examples",&serde_json::json!({})){
+            Ok(v)=>app.home.suite_examples=Some(v["examples"].as_array().cloned().unwrap_or_default()),
+            Err(e)=>{app.set_status(e.to_string(),true);app.home.suite_examples=Some(Vec::new());}
+        }
+    }
+    let suite=app.home.suite_examples.clone().unwrap_or_default();
+    for e in &suite{if e["present"]==true&&let Some(path)=e["path"].as_str(){want(&mut app.home,path);}}
     poll(app, ui.ctx());
     let t = Tokens::get();
     let samples = solidcraft_engine::sample::samples();
@@ -454,9 +463,14 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui) {
     egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.panel).inner_margin(egui::Margin::symmetric(36, 24))).show(ui, |ui| {
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label(RichText::new("SolidCraft").size(26.0).strong().color(t.text));
+                ui.label(RichText::new("10derCraft").size(26.0).strong().color(t.text));
                 ui.add_space(12.0);
                 ui.label(RichText::new(crate::i18n::tr_label("Start")).size(16.0).color(t.text_dim));
+                if ui.button("Varianten des aktuellen Projekts").clicked() {
+                    app.ui.project_page = "cad".into();
+                    app.home.open = false;
+                    app.start("studio.variants.open");
+                }
             });
             ui.add_space(16.0);
             ui.horizontal(|ui| {
@@ -572,6 +586,18 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui) {
             }
             ui.add_space(24.0);
             section(ui, app.tr("home.samples"));
+            if !suite.is_empty(){
+                grid(ui,suite.len(),|ui,i|{
+                    let Some(e)=suite.get(i) else{return;};
+                    let path=e["path"].as_str().unwrap_or("");let present=e["present"]==true;
+                    let description=e["description"].as_str().unwrap_or("");
+                    let response=card(ui,Pic::Ready(app.home.thumbs.get(path).and_then(Option::as_ref)),e["title"].as_str().unwrap_or(""),if present{description}else{"Projektdatei fehlt"},!present);
+                    crate::scenario::publish_handle(&format!("home:suite:{}",e["id"].as_str().unwrap_or("")),response.rect.center());
+                    if response.clicked()&&present{let path=path.to_owned();action=Some(Box::new(move|app|open_recent(app,&path)));}
+                });
+                ui.add_space(16.);
+                section(ui,"CAD-Grundbeispiele");
+            }
             grid(ui, samples.len(), |ui, i| {
                 let Some(s) = samples.get(i) else { return };
                 let key = format!("sample:{i}");

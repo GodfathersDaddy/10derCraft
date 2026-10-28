@@ -29,6 +29,11 @@ pub fn panels(tab: &str) -> &'static [&'static str] {
         "SHEET METAL" => &["CREATE", "MODIFY", "ASSEMBLE", "CONSTRUCT", "INSPECT", "INSERT", "SELECT"],
         "PLASTIC" => &["CREATE", "MODIFY", "ASSEMBLE", "CONSTRUCT", "INSPECT", "INSERT", "SELECT"],
         "RENDER" => &["SCENE"],
+        "MBS" => &["CREATE", "ASSEMBLE"],
+        "INTERFACES" => &["CREATE", "MODIFY"],
+        "FEM / ROM" | "STUDIES" => &["CREATE"],
+        "WORKSHEET" | "VARIANTS" => &["MODIFY"],
+        "LOAD PATHS" => &["INSPECT"],
         _ => &["MAKE", "ADD-INS", "UTILITY", "INSPECT", "SELECT"],
     }
 }
@@ -302,7 +307,7 @@ pub fn app_bar(app: &mut SolveApp, ui: &mut egui::Ui) {
             crate::icons::glyphs::brand_mark(ui.painter(), c);
         }
         if !compact_actions {
-            ui.painter().text(pos2(left + 36.0, r.center().y), Align2::LEFT_CENTER, "SolidCraft", FontId::proportional(14.0), t.app_bar_text);
+            ui.painter().text(pos2(left + 36.0, r.center().y), Align2::LEFT_CENTER, "10derCraft", FontId::proportional(14.0), t.app_bar_text);
         }
         let mut x = left + if compact_actions { 60.0 } else { 128.0 };
         // While a file loads the design waits: no menus or commands from the bar.
@@ -689,12 +694,36 @@ pub fn toolbar(app: &mut SolveApp, ui: &mut egui::Ui) {
             tabs.push("RENDER");
         } else {
             tabs.extend(TABS.iter());
+            if !sketching && app.ui.project_page != "cad" {
+                tabs.extend(crate::engineering_studio::TABS.iter());
+            }
         }
-        for tab in tabs {
+        let tabs_right = if crate::agent_chat::toolbar_button_shown(app) { r.right() - AI_BUTTON_ROOM } else { r.right() };
+        for (index, tab) in tabs.iter().copied().enumerate() {
             let display_tab = app.tr_label(tab);
             let text_width = painter.layout_no_wrap(display_tab.to_string(), FontId::proportional(12.0), t.text).size().x;
             let w = 12.0 + text_width.max(28.0);
             let tr = Rect::from_min_size(pos2(x, tabs_y), vec2(w, 22.0));
+            // Keep native tabs in place; added tabs use a native overflow menu on
+            // narrow windows instead of covering the toolbar or changing its height.
+            if crate::engineering_studio::page_for_tab(tab).is_some() && tr.right() > tabs_right - 28.0 {
+                let overflow = Rect::from_min_size(pos2(x.min(tabs_right - 28.0), tabs_y), vec2(26.0, 22.0));
+                ui.scope_builder(egui::UiBuilder::new().max_rect(overflow), |ui| {
+                    let response = ui.menu_button("»", |ui| {
+                        for hidden in &tabs[index..] {
+                            let item = ui.selectable_label(app.ui.tab == *hidden, app.tr_label(hidden));
+                            crate::scenario::publish_handle(&format!("toolbar_tab:{hidden}"), item.rect.center());
+                            if item.clicked() {
+                                app.ui.engineering_dialog = None;
+                                app.ui.tab = (*hidden).to_string();
+                                ui.close();
+                            }
+                        }
+                    });
+                    crate::scenario::publish_handle("toolbar:more_tabs", response.response.rect.center());
+                });
+                break;
+            }
             let active = app.ui.tab == tab;
             let resp = ui.interact(tr, ui.id().with(("tab", tab)), Sense::click());
             crate::scenario::publish_rect(&format!("toolbar_tab:{tab}"), tr);
@@ -713,6 +742,7 @@ pub fn toolbar(app: &mut SolveApp, ui: &mut egui::Ui) {
             };
             painter.text(tr.center(), Align2::CENTER_CENTER, display_tab, FontId::proportional(12.0), col);
             if resp.clicked() {
+                app.ui.engineering_dialog = None;
                 app.ui.tab = tab.to_string();
             }
             x += w + 4.0;

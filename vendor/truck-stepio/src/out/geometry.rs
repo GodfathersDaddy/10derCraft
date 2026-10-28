@@ -456,6 +456,7 @@ impl StepCurve for Leader {}
 impl DisplayByStep for ModelingCurve {
     fn fmt(&self, idx: usize, f: &mut Formatter<'_>) -> Result {
         match self {
+            ModelingCurve::Involute(_) => Err(std::fmt::Error),
             ModelingCurve::Line(x) => DisplayByStep::fmt(x, idx, f),
             ModelingCurve::BSplineCurve(x) => DisplayByStep::fmt(x, idx, f),
             ModelingCurve::NurbsCurve(x) => DisplayByStep::fmt(x, idx, f),
@@ -467,6 +468,7 @@ impl DisplayByStep for ModelingCurve {
 impl StepLength for ModelingCurve {
     fn step_length(&self) -> usize {
         match self {
+            ModelingCurve::Involute(_) => 0,
             ModelingCurve::Line(_) => Line::<Point3>::LENGTH,
             ModelingCurve::BSplineCurve(x) => x.step_length(),
             ModelingCurve::NurbsCurve(x) => x.step_length(),
@@ -804,6 +806,7 @@ impl<C> StepSurface for Processor<RevolutedCurve<C>, Matrix4> {
 impl DisplayByStep for ModelingSurface {
     fn fmt(&self, idx: usize, f: &mut Formatter<'_>) -> Result {
         match self {
+            ModelingSurface::InvoluteExtrusion(_) => Err(std::fmt::Error),
             ModelingSurface::Plane(x) => DisplayByStep::fmt(x, idx, f),
             ModelingSurface::BSplineSurface(x) => DisplayByStep::fmt(x, idx, f),
             ModelingSurface::NurbsSurface(x) => DisplayByStep::fmt(x, idx, f),
@@ -815,6 +818,7 @@ impl DisplayByStep for ModelingSurface {
 impl StepLength for ModelingSurface {
     fn step_length(&self) -> usize {
         match self {
+            ModelingSurface::InvoluteExtrusion(_) => 0,
             ModelingSurface::Plane(_) => Plane::LENGTH,
             ModelingSurface::BSplineSurface(x) => x.step_length(),
             ModelingSurface::NurbsSurface(x) => x.step_length(),

@@ -1147,7 +1147,7 @@ pub(crate) fn surface(cx: &Ctx, id: u64, extent: &[mt::Point3], seam: &[mt::Poin
                 mt::Curve::Line(l) => mt::BSplineCurve::new(mt::KnotVec::bezier_knot(1), vec![l.0, l.1]).into(),
                 mt::Curve::BSplineCurve(c) => c.into(),
                 mt::Curve::NurbsCurve(c) => c,
-                mt::Curve::IntersectionCurve(_) => return Err("unsupported extrusion profile".into()),
+                mt::Curve::IntersectionCurve(_) | mt::Curve::Involute(_) => return Err("unsupported extrusion profile".into()),
             };
             let (t0, t1) = nurbs.range_tuple();
             let profile: Vec<mt::Point3> = (0..=32).map(|i| nurbs.subs(t0 + (t1 - t0) * i as f64 / 32.0)).collect();

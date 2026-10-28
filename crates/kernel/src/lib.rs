@@ -51,6 +51,8 @@ mod freeform;
 pub mod fuzz;
 mod heal;
 mod helix;
+mod involute;
+pub use involute::{InvoluteGear, involute_gear, involute_geometry, involute_boundary};
 pub mod history;
 mod iges_in;
 mod iges_out;

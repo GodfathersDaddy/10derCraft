@@ -1,5 +1,22 @@
 # Vendored third-party crates
 
+## truck-modeling 0.6.0 (Apache-2.0, RICOS Co. Ltd.)
+
+Source: https://github.com/ricosjp/truck, crates.io release 0.6.0.
+SolidCraft additions and patches:
+- `src/involute.rs`: equation-defined involute curve with exact derivatives and
+  its analytic linear extrusion surface; bounded searches and display sampling.
+- `geometry.rs`, `builder.rs`: curve/surface variants, exact translation sweep,
+  plane attachment and fallible polynomial conversion. Analytic involutes refuse
+  spline conversion; no fitted tooth geometry is substituted.
+- `errors.rs`: explicit error for non-polynomial conversion requests.
+- `lib.rs`: exports the new analytic types. New types serialize with serde.
+- Companion truck-stepio dispatch explicitly refuses unsupported analytic export;
+  the kernel preflight returns a user-facing error before writing STEP.
+
+The registry package declares Apache-2.0; a copy of the Apache licence is included
+in this vendor directory. These changes are maintained locally, not upstream.
+
 Copies of third-party crates that SolidCraft builds with local fixes, wired in with
 `[patch.crates-io]` in the workspace `Cargo.toml`. They keep their own licence; changed lines
 are marked `SolidCraft:` in the source.

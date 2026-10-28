@@ -128,6 +128,7 @@ pub(crate) fn planar_face(chain: &[mt::Edge], tol: f64) -> Result<Option<mt::Fac
     };
     for e in chain {
         let certified = match e.curve() {
+            mt::Curve::Involute(c) => holds(&mt::Plane::new(c.origin,c.origin+c.x_axis,c.origin+c.y_axis)),
             mt::Curve::Line(l) => on_plane(l.0) && on_plane(l.1),
             mt::Curve::BSplineCurve(b) => b.control_points().iter().all(|p| on_plane(*p)),
             mt::Curve::NurbsCurve(c) => {

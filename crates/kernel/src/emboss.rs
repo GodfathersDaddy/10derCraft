@@ -488,7 +488,7 @@ fn face_axial_bounds(face: &mt::Face, o: Vec3, axis: Vec3) -> Result<Option<(f64
                     add(Vec3::new(point.x / point.w, point.y / point.w, point.z / point.w))?;
                 }
             }
-            mt::Curve::IntersectionCurve(_) => return Ok(None),
+            mt::Curve::IntersectionCurve(_) | mt::Curve::Involute(_) => return Ok(None),
         }
     }
     Ok((lo.is_finite() && hi.is_finite()).then_some((lo, hi)))
