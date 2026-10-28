@@ -77,7 +77,7 @@ pub(super) fn model(s: &mut Session, _: &Value) -> Result<Value> {
             let a = endpoint(j.a.occurrence)?;
             let b = endpoint(j.b.occurrence)?;
             // Invalid parameter expressions must not turn into apparently valid stale numbers.
-            joints::expressed(&doc, j).map_err(|e| e.to_string())?;
+            joints::expressed(&joints::Params::new(&doc), j).map_err(|e| e.to_string())?;
             let fa = joints::resolve_origin(&doc, &state, &j.a).map_err(|e| e.to_string())?;
             let fb = joints::resolve_origin(&doc, &state, &j.b).map_err(|e| e.to_string())?;
             let wa = placements.get(a).ok_or("missing A placement")?.2;
@@ -133,7 +133,7 @@ pub(super) fn model(s: &mut Session, _: &Value) -> Result<Value> {
         if a == b {
             issues.push(json!({"kind":"internal_joint","joint":j.id,"message":"Moving joint lies inside one rigid block; check redundant or contradictory constraints."}));
         }
-        let (offset, angle, values) = joints::expressed(&doc, j)?;
+        let (offset, angle, values) = joints::expressed(&joints::Params::new(&doc), j)?;
         edges.push(json!({"id":j.id,"name":j.name,"a":format!("block_{a}"),"b":format!("block_{b}"),
             "kind":j.kind,"native":j,"frame_a_world":fa,"frame_b_world":fb,
             "values":values,"offset_mm":offset,"angle_rad":angle,"local_dofs":j.kind.dofs(),

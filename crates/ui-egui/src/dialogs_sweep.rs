@@ -2,13 +2,14 @@
 //! twist over the path's length, the profile's scale at the end, and guide rails with how they
 //! reshape the profile. Loft and Surface Loft take the same guide rails (#201).
 
+use crate::selection::SelectionExt as _;
+use crate::ui_kit::{choice_row, expr_row};
 use serde_json::{Value, json};
 use solidcraft_engine::Sel;
 use solidcraft_engine::doc::{Expr, Mat, RailFit, SweepOrientation, SweepRail};
 use solidcraft_engine::geom::Vec3;
 
 use crate::SolveApp;
-use crate::dialogs::{combo, field, row_label};
 use crate::selection::{AXES, CURVES, EDGES, SelInput};
 
 /// The orientation choices, in combo order: perpendicular, parallel, a direction.
@@ -92,33 +93,35 @@ pub fn rail_inputs() -> [SelInput; 2] {
     [SelInput::new("Rail", CURVES, true), SelInput::new("Second Rail", CURVES, true)]
 }
 
-/// A feature's stored rails as the rail inputs' selections.
-pub fn rail_sels(rails: &[SweepRail]) -> [Vec<Sel>; 2] {
-    let sels = |i: usize| rails.get(i).map(|r| r.curves.iter().map(|id| Sel::SketchCurve { id: id.clone() }).collect()).unwrap_or_default();
+/// A feature's stored rails as the rail inputs' selections (`active`: the sketch being edited).
+pub fn rail_sels(rails: &[SweepRail], active: Option<u64>) -> [Vec<Sel>; 2] {
+    let sels =
+        |i: usize| rails.get(i).map(|r| r.curves.iter().map(|id| crate::selection::curve_pick(id, r.sketch.0, active)).collect()).unwrap_or_default();
     [sels(0), sels(1)]
 }
 
 /// The option rows; true when Enter was pressed in a field.
 pub fn rows(ui: &mut egui::Ui, o: &mut SweepOpts, id: &str) -> bool {
+    rows_with(ui, o, id, |_| {})
+}
+
+/// [`rows`] with extra rows between the orientation and the collapsed Advanced section, so the
+/// feature's own rows (such as its operation) stay above the section.
+pub fn rows_with(ui: &mut egui::Ui, o: &mut SweepOpts, id: &str, between: impl FnOnce(&mut egui::Ui)) -> bool {
     let mut enter = false;
-    row_label(ui, "Orientation");
-    combo(ui, &format!("{id}_orient"), &ORIENTATIONS, &mut o.orientation);
-    ui.end_row();
-    row_label(ui, "Twist");
-    enter |= field(ui, &mut o.twist);
-    ui.end_row();
-    row_label(ui, "End Scale");
-    enter |= field(ui, &mut o.scale);
-    ui.end_row();
-    rail_fit_row(ui, id, &mut o.rail_fit);
+    choice_row(ui, "Orientation", &format!("{id}_orient"), &mut o.orientation, &ORIENTATIONS);
+    between(ui);
+    crate::ui_kit::section(ui, id, "Advanced", false, |ui| {
+        enter |= expr_row(ui, "Twist", &mut o.twist);
+        enter |= expr_row(ui, "End Scale", &mut o.scale);
+        rail_fit_row(ui, id, &mut o.rail_fit);
+    });
     enter
 }
 
 /// The Rail Fit row: `fit` an index into [`RAIL_FITS`].
 pub fn rail_fit_row(ui: &mut egui::Ui, id: &str, fit: &mut usize) {
-    row_label(ui, "Rail Fit");
-    combo(ui, &format!("{id}_rail_fit"), &RAIL_FITS, fit);
-    ui.end_row();
+    choice_row(ui, "Rail Fit", &format!("{id}_rail_fit"), fit, &RAIL_FITS);
 }
 
 /// A stored rail fit as an index into [`RAIL_FITS`].
@@ -131,11 +134,11 @@ pub fn rail_fit_index(fit: RailFit) -> usize {
 pub fn rail_params(app: &SolveApp, fit: usize, rails: [&[Sel]; 2], p: &mut Value) -> Result<bool, String> {
     let mut given = Vec::new();
     for sels in rails {
-        let curves: Vec<String> = sels.iter().filter_map(|x| if let Sel::SketchCurve { id } = x { Some(id.clone()) } else { None }).collect();
+        let curves: Vec<String> = sels.curve_ids();
         if curves.is_empty() {
             continue;
         }
-        let sketch = crate::dialogs::curves_sketch(app, &curves, None).ok_or("each rail's curves must be in one sketch")?;
+        let sketch = crate::dialogs::picks_sketch(app, sels, None).ok_or("each rail's curves must be in one sketch")?;
         given.push(json!({"sketch": sketch, "curves": curves}));
     }
     if given.is_empty() {

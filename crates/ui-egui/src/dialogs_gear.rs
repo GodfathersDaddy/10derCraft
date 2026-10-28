@@ -1,6 +1,6 @@
 //! Thin gear-tool dialog: all equations and capability decisions live in engine commands.
 use crate::SolveApp;
-use crate::dialogs::{Kind, check, combo, field, row_label};
+use crate::dialogs::{Kind, check, combo, field};
 use crate::selection::SelInput;
 use serde_json::{Value, json};
 
@@ -124,6 +124,12 @@ pub fn commands(k: &Gear) -> Result<Vec<(String, Value)>, String> {
     }
 }
 pub fn rows(app: &mut SolveApp, ui: &mut egui::Ui, k: &mut Gear) -> bool {
+    egui::Grid::new("gear_form").num_columns(2).show(ui, |ui| legacy_rows(app, ui, k)).inner
+}
+fn row_label(ui: &mut egui::Ui, label: &str) {
+    ui.label(label);
+}
+fn legacy_rows(app: &mut SolveApp, ui: &mut egui::Ui, k: &mut Gear) -> bool {
     let items = app.session.doc.metadata.get("org.solidcraft.gear-designs").and_then(|v| v["items"].as_array()).cloned().unwrap_or_default();
     let mut labels = vec!["Neuer Entwurf / Kopie".to_owned()];
     labels.extend(

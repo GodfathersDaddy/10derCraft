@@ -1,6 +1,9 @@
 //! Workspace-shipped project catalogue; no solver, server or document edits.
 use super::CommandSpec;
-use crate::{Result, Session, params::bad};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::params::bad;
+use crate::{Result, Session};
+#[cfg(not(target_arch = "wasm32"))]
 use serde::Deserialize;
 use serde_json::{Value, json};
 pub static COMMANDS: &[CommandSpec] = &[CommandSpec::new("suite.examples", "List 10derCraft Examples", list)
@@ -9,11 +12,13 @@ pub static COMMANDS: &[CommandSpec] = &[CommandSpec::new("suite.examples", "List
     .doc_only()
     .params("Discover the shipped 10derCraft.examples.json beside this workspace; returns existing project paths for the native Start page")];
 #[derive(Deserialize)]
+#[cfg(not(target_arch = "wasm32"))]
 struct Catalogue {
     schema: String,
     examples: Vec<Example>,
 }
 #[derive(Deserialize)]
+#[cfg(not(target_arch = "wasm32"))]
 struct Example {
     id: String,
     title: String,

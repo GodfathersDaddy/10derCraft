@@ -217,7 +217,7 @@ fn design(s: &mut Session, p: &Value) -> Result<Value> {
     }
     let name = super::gear_projects::name(p.get("name"), items.len())?;
     items.push(json!({"name":name,"inputs":p,"snapshot":result,"feature":feature,"snapshot_note":"Sizing snapshot: gear.review detects changes; gear.update explicitly refreshes calculation and optionally CAD."}));
-    next.doc_mut().metadata.set(KEY, saved)?;
+    next.doc_mut().metadata.set(solidcraft_doc::metadata::Owner::Design, KEY, saved)?;
     super::worksheet::commit(s, next)?;
     Ok(json!({"calculation":result,"feature":feature}))
 }

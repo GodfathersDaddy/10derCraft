@@ -110,7 +110,7 @@ fn to_offset_canvas_edit_changes_offset_and_one_undo_restores_extent() {
 #[test]
 fn moved_owner_references_survive_actual_edit_with_another_component_active() {
     let mut h = Harness::new();
-    let owner = h.app.run("component.create", json!({"name":"Owner"})).unwrap();
+    let owner = h.app.run("component.create", json!({"name":"Owner","grounded":false})).unwrap();
     let mut h = make_in(h, json!({"from":[0,0,5],"to":[0,0,15],"to_offset":"2 mm"}));
     h.app.run("occurrence.move", json!({"occurrence":owner["occurrence"],"translate":[100,0,20]})).unwrap();
     let other = h.app.run("component.create", json!({"name":"Other","parent":0})).unwrap();
@@ -304,6 +304,8 @@ fn symmetric_total_distance_preview_handle_drag_apply_and_reopen_agree() {
         let mut h = make(json!({"direction":"symmetric","distance":"100 mm","convention":convention}));
         h.call("ui.view", json!({"view":"fit"}));
         h.frames(4);
+        // Leave room above the fitted solid to grow the arrow without entering the ribbon.
+        h.app.cam.distance *= 1.5;
         open(&mut h);
         let expected_tip = h.at(&json!({"world":[5,5,cap]})).unwrap();
         let handle = h.at(&json!({"handle":"arrow"})).unwrap();

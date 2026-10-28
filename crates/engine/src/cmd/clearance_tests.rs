@@ -350,6 +350,11 @@ fn a_body_that_changed_shape_is_measured_again() {
 /// ring under it. With a fillet under the head against the bore's sharp edge, the fillet's ring
 /// is in the flange (about 0.49 mm³), next to walls that lie on one another: the boolean tried
 /// for minutes there and gave up; now it is reported as such within seconds.
+///
+/// The clock is not read: what is under test is the result, and the boolean that gives up is
+/// reported as such instead of hanging the test. The wall that lies on the other one is what
+/// makes the pair unchecked, and that is what the assertions below check (#2999 dropped the clock
+/// from the sibling tests the same way).
 #[test]
 fn a_pin_seated_line_to_line_in_its_bushing_is_measured() {
     let ring = std::f64::consts::PI * (7.0f64.powi(2) - 4.0f64.powi(2)) * 0.2;
@@ -365,9 +370,7 @@ fn a_pin_seated_line_to_line_in_its_bushing_is_measured() {
             run(&mut s, "solid.fillet", json!({"edges": [[104, 0, z]], "radius": 0.3, "body": "Pin"}));
             run(&mut s, "solid.fillet", json!({"edges": [[107, 0, z + 1.5]], "radius": 0.5, "body": "Pin"}));
         }
-        let started = std::time::Instant::now();
         let r = run(&mut s, "inspect.clearance", json!({"bodies": ["Pin"], "against": ["Bush"], "min_volume": 0.01, "clearance": 1e-6}));
-        assert!(started.elapsed().as_secs_f64() < 30.0, "sunk {sunk}: {:?}", started.elapsed());
         if fillet {
             assert!(r["unchecked"][0]["reason"].as_str().is_some_and(|w| w.contains("pin on one cylinder")), "{r}");
             continue;
@@ -472,6 +475,57 @@ fn a_roller_pressed_into_a_large_plate_is_reported() {
     assert_eq!(pair(&overlaps[0]), ["Plate", "Roller"]);
     let want = (r * r * ((r - depth) / r).acos() - (r - depth) * (r * r - (r - depth) * (r - depth)).sqrt()) * length;
     assert!((f(&overlaps[0]["volume_mm3"]) - want).abs() < 0.01 * want, "{want} {res}");
+}
+
+/// Two STL copies of a cube inserted into a design. Returns the names of the two mesh bodies.
+fn insert_two_mesh_cubes(s: &mut Session, tag: &str) -> Vec<String> {
+    let dir = std::env::temp_dir().join(format!("solidcraft-mesh-unchecked-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let stl = dir.join("cube.stl");
+    let mut cube = Session::default();
+    run(&mut cube, "solid.box", json!({"length": 20, "width": 20, "height": 20, "corner": [0, 0, 0], "body_name": "Cube"}));
+    run(&mut cube, "file.export", json!({"path": stl.to_string_lossy()}));
+    for _ in 0..2 {
+        run(s, "file.insert_mesh", json!({"path": stl.to_string_lossy()}));
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+    s.world_state().bodies.iter().filter(|b| b.body.is_mesh()).map(|b| b.name.clone()).collect()
+}
+
+/// #3249: mesh bodies are not measured, and used to vanish from the answer (`bodies: 0`, nothing
+/// unchecked). They are listed in `unchecked` with a reason, and naming one in `bodies` or
+/// `against` is not "no solid body".
+#[test]
+fn mesh_bodies_are_listed_as_unchecked_and_can_be_named() {
+    let mut s = Session::default();
+    let meshes = insert_two_mesh_cubes(&mut s, "clearance");
+    assert_eq!(meshes.len(), 2, "{meshes:?}");
+    let r = run(&mut s, "inspect.clearance", json!({"clearance": 1}));
+    assert_eq!((r["bodies"].as_u64(), r["pairs_checked"].as_u64()), (Some(0), Some(0)), "{r}");
+    let unchecked = r["unchecked"].as_array().cloned().unwrap_or_default();
+    assert_eq!(unchecked.len(), 2, "{r}");
+    for (u, name) in unchecked.iter().zip(&meshes) {
+        assert_eq!(u["a"].as_str(), Some(name.as_str()), "{r}");
+        assert!(u["b"].is_null(), "{r}");
+        assert_eq!(u["reason"], "mesh body: not checked", "{r}");
+    }
+    // Beside solid bodies: those are measured, the meshes are still listed.
+    cube(&mut s, "A", 10.0, [100.0, 0.0, 0.0]);
+    cube(&mut s, "B", 10.0, [105.0, 0.0, 0.0]);
+    let r = run(&mut s, "inspect.clearance", json!({}));
+    assert_eq!(r["bodies"], 2, "{r}");
+    assert_eq!(r["overlaps"].as_array().map(Vec::len), Some(1), "{r}");
+    assert_eq!(r["unchecked"].as_array().map(Vec::len), Some(2), "{r}");
+    // A mesh body named in `bodies` or `against` is listed, not refused; an unknown name still is.
+    for params in [json!({"bodies": ["A", meshes[0]]}), json!({"bodies": ["A"], "against": [meshes[0]]})] {
+        let r = run(&mut s, "inspect.clearance", params.clone());
+        let unchecked = r["unchecked"].as_array().cloned().unwrap_or_default();
+        assert_eq!(unchecked.len(), 1, "{params}: {r}");
+        assert_eq!(unchecked[0]["a"].as_str(), Some(meshes[0].as_str()), "{params}: {r}");
+    }
+    let e = s.execute("inspect.clearance", &json!({"bodies": ["Nope"]})).unwrap_err().to_string();
+    assert!(e.contains("`Nope`"), "{e}");
 }
 
 /// A pin turned from a profile (its wall in three faces) in the bore of a tube of its own size

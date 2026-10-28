@@ -8,8 +8,10 @@ use crate::{KernelError, Result, guard};
 /// readers get plain 3D geometry that lies on both faces, and the file does not repeat the two
 /// surfaces for every such edge.
 fn plain_curves(b: &Body) -> Result<mt::Solid> {
-    if b.solid.edge_iter().any(|e| matches!(e.curve(),mt::Curve::Involute(_))) {
-        return Err(KernelError::Invalid("STEP export of analytic involutes is not implemented; save the native project to preserve exact curves".into()));
+    if b.solid.edge_iter().any(|e| matches!(e.curve(), mt::Curve::Involute(_))) {
+        return Err(KernelError::Invalid(
+            "STEP export of analytic involutes is not implemented; save the native project to preserve exact curves".into(),
+        ));
     }
     let s = crate::ops::placed_topology(&b.solid, mt::Matrix4::from_scale(1.0))?;
     let size = b.size();

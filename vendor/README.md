@@ -47,6 +47,11 @@ Changes:
   With no direction to go by, the edge goes where both of its ends are in one wire.
 - `transversal/divide_face/mod.rs`: a face piece whose wire is not simple makes the operation
   give up (`Face::try_new`) instead of panicking.
+- `transversal/divide_face/mod.rs`: a loop whose polygon in the face's parameters has no area
+  (a small hole's rim divided at the tolerance of a much larger operand: one chord per half
+  circle) is divided again, finer, before its area's sign tells a hole from a face piece. The
+  sign of a zero area was random: the hole became a face of its own, inside out, and the face it
+  was cut in stayed whole.
 - `lib.rs`: `tr!` reports where an operation gives up when `SHAPEOPS_TRACE` is set; compiler
   warnings no longer fail the build.
 - Face and edge history (`transversal/history.rs`, new): `and_with_history` / `or_with_history`
@@ -90,6 +95,19 @@ Changes:
   does. They multiplied by p only, so the second derivatives of every B-spline and NURBS surface
   of degree p ≥ 3 were 1/(p − 1) of their value (a cubic surface's curvature read as half, #763).
   `crates/kernel/src/surface_second_derivative_tests.rs` holds them to finite differences.
+- `decorators/intersection_curve.rs`: `IntersectionCurve::parameter_division` with a tolerance
+  below truck's `TOLERANCE` (1e-6), or one that is not a number, divides at `TOLERANCE` instead
+  of panicking in truck's tolerance assertion; a join failed on that panic (#4623).
+  `crates/kernel/src/issue_1038_tests.rs` holds it to the division at 1e-6.
+- `decorators/intersection_curve.rs`: where the hinted projection behind `parameter_division`
+  and the search from nothing both fail, the leader's point stands in, the division stops, and
+  the failure is recorded for `take_projection_failure`. It fell back to `subs`, which unwraps
+  that same failed search: a revolve cut whose sphere's pole sat on a box's edge panicked
+  dividing an edge (#5562).
+- truck-shapeops `transversal/divide_face/mod.rs`: an edge whose division recorded such a
+  failure gives up the face division (`None`), so the Boolean attempt fails as quickly as the
+  panic made it, and the kernel goes on to its other tries. Carrying the approximate points on
+  made one test's Boolean run for minutes.
 
 ## truck-stepio 0.3.0 (Apache-2.0, © RICOS Co. Ltd., https://github.com/ricosjp/truck)
 
@@ -114,6 +132,12 @@ Changes:
 ## truck-meshalgo 0.4.0 (Apache-2.0, © RICOS Co. Ltd., https://github.com/ricosjp/truck)
 
 Changes:
+- `tessellation/triangulation.rs`: a boundary segment that crosses constraints already added
+  is split where it crosses by `add_split_constraint` (a vertex at each crossing, the pieces
+  added where they can be), not by spade's `add_constraint_and_split`, which asserts when a
+  split lands so near another vertex or constraint that the piece up to it is blocked. That
+  assertion lost whole bodies and operations (#4031, #4598); a blocked piece is now left out, as
+  truck did before #1653.
 - `tessellation/triangulation.rs`, `closed.rs`: retry nearest trim projections outside a
   spline's knot domain without the preceding point's hint, preferring a bounded fit within
   the caller's chord tolerance, with a bounded damped least-squares fallback where
@@ -197,6 +221,22 @@ Changes:
   old test is kept as `tessellation::include_test_hooks`, behind a `test-hooks` feature that
   only `solidcraft-kernel`'s tests turn on, and `crates/kernel/tests/tess_include_equivalence.rs`
   compares the two.
+- `tessellation/triangulation.rs`: the constrained Delaunay triangulation of a trimmed face
+  works in (u, v) scaled by the surface's mean speed along each (a power of two, so exact both
+  ways). In raw parameters, a loft side ruled across (about 30 mm) and long along the loft
+  (about 600 mm) is a strip stretched twentyfold, and a trimming node was fanned to boundary
+  nodes hundreds of millimetres away: a flat sheet through a joined tube.
+- `tessellation/triangulation.rs`: every segment of a face's boundary becomes a constraint; one
+  that crosses or overlaps a constraint already added (an intersection edge's polyline can hook
+  back a few micrometres past its vertex) is split where they meet. truck dropped such a
+  segment and joined its start to the first later node it could reach, which on a joined tube
+  left a trimming curve's 130 nodes behind one constraint across the face: slivers from it
+  sagged millimetres off the surface, and a face pinched to a point (#1648) got no triangles.
+  All meshes; faces whose segments all go in mesh as before.
+- `tessellation/mod.rs`: `Deflection::rulings` is now `Deflection::display`: a mesh to display
+  or export (the kernel's `tessellate` and display meshes), which gets the ruling grid lines,
+  and the speed-scaled triangulation above. The meshes a Boolean operation intersects
+  (`Deflection::chord`) keep truck's (u, v) and insertion order.
 - `lib.rs`: compiler warnings no longer fail the build. Example, test and bench targets are
   dropped (their sources are not vendored).
 - `tessellation/triangulation.rs`: adaptive division also splits a cell that bows off its
@@ -208,21 +248,12 @@ Changes:
   face's mesh puts each point at its parameters on the face's own surface, so a point of an edge
   that lies off a surface within tolerance (an intersection-curve sample whose projection did not
   converge, an imported edge) came out in a different place on each of the edge's faces, and the
-  exported mesh had a crack there. In display and export meshes (`Deflection::rulings`), a
+  exported mesh had a crack there. In display and export meshes (`Deflection::display`), a
   vertex at a point of a face's boundary loops that is farther than `TOLERANCE` from the nearest
   point of the face's edges now goes to that point, when it is within the chord tolerance
   (`onto_edges`). Points within `TOLERANCE` stay on the surface, so exact geometry meshes as
   before. The meshes Boolean operations intersect keep truck's points.
-- `tessellation/triangulation.rs`: a face whose boundary touches itself or another of its loops
-  within `TOLERANCE` (pinched to a point where a body touches its edge, #1648) can cross there by
-  less than that. A segment that would cross one already added was left out of the triangulation,
-  and the fallback that joins the next point instead cut across the face: such a face came out
-  with no triangles, or without those at the pinch, depending on which segment went in first.
-  When a segment is left out, every boundary point within `TOLERANCE` of a segment, away from its
-  ends, is put into it (`pinched`: at most 8192 boundary points, and at most 8192 put in), and
-  the face is triangulated again. Faces whose segments all go in are triangulated as before.
-
-- `tessellation/triangulation.rs`: in display and export meshes (`Deflection::rulings`), a
+- `tessellation/triangulation.rs`: in display and export meshes (`Deflection::display`), a
   direction left undivided along the rulings of a face ruled one way also gets a grid line
   through each point of the face's boundary that lies inside the face along it
   (`with_boundary_lines`), when there are at most 16 such points: corners standing into the
@@ -262,6 +293,8 @@ Original package sources from https://github.com/emilk/egui/tree/0.36.2/crates/e
 with both original licence texts retained. No images or bundled documentation are copied.
 
 SolidCraft changes:
+- `src/setup.rs`, `src/lib.rs`: let a named adapter selector defer to the normal wgpu
+  request when the requested card is unavailable or incompatible with the window surface.
 - `src/lib.rs`: use 1x MSAA on the selected OpenGL adapter before creating pipelines,
   exposing the effective sample count so host paint callbacks can match it.
 - `src/winit.rs`: use that same effective count for depth and resolve attachments.
@@ -297,3 +330,25 @@ SolidCraft changes:
   and the frame is skipped with a repaint asked for when it is due. The streak and the deadline
   survive a recreate; a configure the device takes ends the streak, a recreate it asked for
   included. A recreate for a lost surface goes ahead as before.
+- `src/lib.rs`, `src/winit.rs`: the device's lost callback marks `RenderState::device_lost`
+  (`DeviceLost`), and the painter draws nothing on a lost device. Before a frame's uploads it
+  submits nothing (`DeviceLost::probe`), so a device the driver lost is found by that
+  submission rather than by the first queue write, which panicked inside wgpu-core
+  (`PendingWrites::activate`, #4172).
+- `src/lib.rs`, `src/winit.rs`: a surface configure that meets a lost device is not taken as
+  configured (`configure_captured`): wgpu reports device-loss errors to no error scope, and on
+  D3D12 a driver reset found by the configure has already dropped the surface's configuration.
+  The next acquire failed with "Surface is not configured for presentation" and the device's
+  default handler panicked (#7007). An unsupported surface is a refused configure too. The
+  acquire runs under `capture_errors`, and the `Validation` status it then returns reconfigures
+  the surface instead of skipping every later frame.
+- `src/lib.rs`, `src/winit.rs`: the painter holds an acquired frame as `AcquiredFrame`, which
+  destroys a second handle to the frame's texture once the frame is presented or dropped. On a
+  lost device wgpu's present and discard keep the frame's image in the surface, and dropping
+  the surface (the window closing for the restart) then panicked in wgpu-hal ("Trying to
+  destroy a SwapchainAcquireSemaphore that is still in use by a SurfaceTexture", #7148); the
+  destroy takes the image back whatever the device's state.
+- `src/lib.rs`: creation of the egui renderer uses validation, internal and out-of-memory
+  error scopes, awaiting every result before returning it. A refused UI pipeline (D3D12
+  `egui_pipeline` shader compilation, #6648) returns `WgpuError::CreateRendererError` through
+  eframe so startup can retry another backend instead of invoking wgpu's panic handler.

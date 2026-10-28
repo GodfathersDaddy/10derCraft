@@ -5,6 +5,7 @@
 //! This reads every menu the app can open and fails on the ones it cannot
 //! translate.
 
+use crate::test_support::sample_app;
 use std::collections::BTreeSet;
 
 use crate::browser;
@@ -13,15 +14,9 @@ use crate::{Services, SolveApp};
 use serde_json::json;
 use solidcraft_engine::Session;
 
-fn sample_app() -> SolveApp {
-    let mut s = Session::default();
-    s.run_script(&solidcraft_engine::sample::script()).expect("sample script");
-    SolveApp::new(s, Services::default())
-}
-
 /// Every English text `label()` can be asked to translate.
 fn english_texts() -> BTreeSet<String> {
-    const EN: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/locales/en.json"));
+    const EN: &str = include_str!(concat!(env!("OUT_DIR"), "/locales/en.json"));
     let messages: serde_json::Map<String, serde_json::Value> = serde_json::from_str(EN).expect("en.json is valid JSON");
     messages.values().filter_map(|v| v.as_str().map(str::to_string)).collect()
 }
@@ -86,16 +81,23 @@ fn every_menu_label_is_in_the_english_catalog() {
 
     // The labels that depend on state, so their other branch is seen too.
     let names: Vec<String> = app.session.model.state().bodies.iter().map(|b| b.name.clone()).collect();
-    app.ui.show_origin = false;
+    app.set_origin_shown(false);
     take(&app, &mut seen);
     for name in &names {
-        app.ui.locked_bodies.push(name.clone());
+        app.session.visibility.locked_bodies.push(name.clone());
         app.session.visibility.hidden_bodies.push(name.clone());
     }
     take(&app, &mut seen);
-    app.ui.locked_bodies.clear();
+    app.session.visibility.locked_bodies.clear();
     app.session.visibility.hidden_bodies.clear();
     take(&app, &mut seen);
+
+    // Linked components offer source-file actions absent from the sample design.
+    let linked = app.session.execute("component.create", &json!({"name": "Linked part"})).expect("linked component");
+    let component = linked["component"].as_u64().expect("component id");
+    app.session.doc_mut().links.insert(component, solidcraft_engine::doc::DesignLink { path: "part.solidcraft".into(), feature: 0 });
+    take(&app, &mut seen);
+    assert!(seen.contains("Open Linked Design"));
 
     // A menu that stops yielding labels would empty `seen` and turn the
     // whole test into a tautology, so the sweep has to stay broad.

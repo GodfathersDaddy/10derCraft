@@ -330,7 +330,10 @@ impl Strip {
         let (surface, top) = match (planar, exact) {
             (true, Some(top)) => (plane(first.0, first.1, first.3), top),
             (false, Some(top)) => {
-                let s = mt::BSplineSurface::homotopy(c.clone().lift_up().map_err(|e| KernelError::Invalid(e.to_string()))?, top.clone().lift_up().map_err(|e| KernelError::Invalid(e.to_string()))?);
+                let s = mt::BSplineSurface::homotopy(
+                    c.clone().lift_up().map_err(|e| KernelError::Invalid(e.to_string()))?,
+                    top.clone().lift_up().map_err(|e| KernelError::Invalid(e.to_string()))?,
+                );
                 (mt::Surface::NurbsSurface(mt::NurbsSurface::new(s)), top)
             }
             (planar, None) => {

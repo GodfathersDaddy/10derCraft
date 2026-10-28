@@ -44,7 +44,7 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui) {
     }
     let snapshot = app.session.execute("worksheet.read", &json!({})).unwrap_or_default();
     let title = snapshot["document"]["title"].as_str().unwrap_or("Berechnung");
-    egui::CentralPanel::default().frame(egui::Frame::NONE.fill(Tokens::get().panel).inner_margin(24)).show(ui, |ui| {
+    crate::ui_kit::FileView::page(ui, |ui| {
         egui::ScrollArea::vertical().id_salt("worksheet_page_scroll").auto_shrink([false, false]).show(ui, |ui| {
         ui.heading(title);
         variants(app, ui, &snapshot, &mut draft);

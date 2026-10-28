@@ -105,7 +105,7 @@ fn read(s: &Session) -> Result<Network> {
 }
 fn save(s: &mut Session, n: &Network) -> Result<Value> {
     let value = serde_json::to_value(n).map_err(|e| error(e.to_string()))?;
-    s.doc_mut().metadata.set(KEY, value.clone())?;
+    s.doc_mut().metadata.set(solidcraft_doc::metadata::Owner::Design, KEY, value.clone())?;
     Ok(value)
 }
 fn valid_numbers(v: &[f64]) -> bool {
@@ -375,10 +375,14 @@ fn solve(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(report)
 }
 pub(super) fn model_ports(s: &Session) -> Result<Vec<Value>> {
-    Ok(read(s)?.ports.values().map(|p| match resolve(s, p) {
-        Ok(frame) => json!({"port":p,"valid":true,"frame":frame}),
-        Err(e) => json!({"port":p,"valid":false,"error":e.to_string()}),
-    }).collect())
+    Ok(read(s)?
+        .ports
+        .values()
+        .map(|p| match resolve(s, p) {
+            Ok(frame) => json!({"port":p,"valid":true,"frame":frame}),
+            Err(e) => json!({"port":p,"valid":false,"error":e.to_string()}),
+        })
+        .collect())
 }
 fn state(s: &mut Session, _: &Value) -> Result<Value> {
     let n = read(s)?;

@@ -26,6 +26,90 @@ pub(super) fn face_normal(s: &Session, p: Vec3) -> Option<Vec3> {
 /// The outward normal of the planar face at `p` of `body` (any body when `None`).
 pub(super) fn face_normal_in(s: &Session, p: Vec3, body: Option<&str>) -> Option<Vec3> {
     let (m, f, d, _) = face_at_in(s, p, body).ok().flatten()?;
+    if !near_face(&m, d) {
+        return None;
+    }
+    m.triangles
+        .iter()
+        .zip(&m.tri_face)
+        .filter(|(_, tf)| **tf == f)
+        .filter_map(|(t, _)| m.tri(t))
+        .find_map(|[a, b, c]| (b - a).cross(c - a).normalized())
+}
+
+/// Is a face `d` from a point near enough to hold it: within a thousandth of the body's
+/// size (at least 1 µm), ten times over, as picks placed on faces are taken.
+fn near_face(m: &Mesh, d: f64) -> bool {
+    let tol = (m.bounds().diagonal() * 1e-3).max(1e-3);
+    d <= tol * 10.0
+}
+
+/// Does `p` lie on a face of a body (planar or curved), as features placed on a face need?
+/// Where flush bodies' faces are equally near, it lies on each of them. A point in the opening
+/// of a planar face (the mouth of an existing bore, which a counterbore is centred on) is on
+/// that face too.
+pub(super) fn on_a_face(s: &Session, p: Vec3) -> bool {
+    let on_one = match face_at_in(s, p, None) {
+        Ok(Some((m, _, d, _))) => near_face(&m, d),
+        Ok(None) => false,
+        Err(tied) => tied.first().is_some_and(|b| matches!(face_at_in(s, p, Some(b)), Ok(Some((m, _, d, _))) if near_face(&m, d))),
+    };
+    on_one || s.model.state().bodies.iter().any(|b| in_a_planar_face_outline(&b.mesh(), p))
+}
+
+/// Does `p` lie in the plane of a planar face of `m`, inside the hull of that face's corners
+/// (so over its openings, not past its edge)?
+fn in_a_planar_face_outline(m: &Mesh, p: Vec3) -> bool {
+    let mut faces: std::collections::BTreeMap<u32, Vec<[Vec3; 3]>> = std::collections::BTreeMap::new();
+    for (t, f) in m.triangles.iter().zip(&m.tri_face) {
+        if let Some(tri) = m.tri(t) {
+            faces.entry(*f).or_default().push(tri);
+        }
+    }
+    faces.values().any(|tris| {
+        let Some([a, b, c]) = tris.first().copied() else { return false };
+        let Some(n) = (b - a).cross(c - a).normalized() else { return false };
+        let planar = tris.iter().all(|[a, b, c]| (*b - *a).cross(*c - *a).normalized().is_some_and(|k| k.dot(n) > 1.0 - 1e-6));
+        if !planar || !near_face(m, (p - a).dot(n).abs()) {
+            return false;
+        }
+        let reference = if n.x.abs() < 0.9 { Vec3::new(1.0, 0.0, 0.0) } else { Vec3::new(0.0, 1.0, 0.0) };
+        let Some(u) = n.cross(reference).normalized() else { return false };
+        let v = n.cross(u);
+        let flat = |q: Vec3| (q.dot(u), q.dot(v));
+        let mut corners: Vec<(f64, f64)> = tris.iter().flatten().map(|q| flat(*q)).collect();
+        corners.sort_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal));
+        corners.dedup();
+        inside_hull(&corners, flat(p))
+    })
+}
+
+/// Is `q` inside (or on) the convex hull of `sorted` points (sorted by x, then y)?
+fn inside_hull(sorted: &[(f64, f64)], q: (f64, f64)) -> bool {
+    let cross = |o: (f64, f64), a: (f64, f64), b: (f64, f64)| (a.0 - o.0) * (b.1 - o.1) - (a.1 - o.1) * (b.0 - o.0);
+    let chain = |points: &mut dyn Iterator<Item = &(f64, f64)>| {
+        let mut h: Vec<(f64, f64)> = Vec::new();
+        for &pt in points {
+            while h.len() >= 2 && cross(h[h.len() - 2], h[h.len() - 1], pt) <= 0.0 {
+                h.pop();
+            }
+            h.push(pt);
+        }
+        h
+    };
+    let mut hull = chain(&mut sorted.iter());
+    hull.pop();
+    let mut upper = chain(&mut sorted.iter().rev());
+    upper.pop();
+    hull.extend(upper);
+    let eps = 1e-9;
+    hull.len() >= 3 && (0..hull.len()).all(|i| cross(hull[i], hull[(i + 1) % hull.len()], q) >= -eps)
+}
+
+/// The outward normal of the planar face at the world point `p`: on the model as the view
+/// places it (moved components where they are shown).
+pub(super) fn face_normal_world(s: &Session, p: Vec3) -> Option<Vec3> {
+    let (m, f, d, _) = face_at_state(&s.world_state(), p, None).ok().flatten()?;
     let tol = (m.bounds().diagonal() * 1e-3).max(1e-3);
     if d > tol * 10.0 {
         return None;
@@ -41,8 +125,7 @@ pub(super) fn face_normal_in(s: &Session, p: Vec3, body: Option<&str>) -> Option
 /// Is the body face at `p` planar (`None`: no face there)?
 pub(super) fn face_is_planar(s: &Session, p: Vec3) -> Option<bool> {
     let (m, f, d, _) = face_at(s, p)?;
-    let tol = (m.bounds().diagonal() * 1e-3).max(1e-3);
-    if d > tol * 10.0 {
+    if !near_face(&m, d) {
         return None;
     }
     let ns: Vec<Vec3> = m
@@ -63,14 +146,30 @@ pub(super) fn face_is_planar(s: &Session, p: Vec3) -> Option<bool> {
 /// The point is in the frame of the command's other picks: the component's own when
 /// they were mapped into it, else the world's.
 pub(super) fn face_ref(s: &Session, v: &Value, body: Option<&str>, cmd: &str) -> Result<Vec3> {
+    match face_ref_form(v).map_err(|why| bad(cmd, why))? {
+        FaceRefForm::Point(p) => Ok(p),
+        FaceRefForm::Name(name) => {
+            let st = if crate::frames::mapped() { s.model.state() } else { s.world_state() };
+            solidcraft_doc::naming::named_face_point(&st, body, name).map_err(|why| bad(cmd, why))
+        }
+    }
+}
+
+/// A face reference as given, before it is looked up: see [`face_ref`].
+pub(crate) enum FaceRefForm<'a> {
+    Point(Vec3),
+    Name(&'a str),
+}
+
+/// What [`face_ref`] reads `v` as, without the design: a point, or a name of 1…512 bytes.
+pub(crate) fn face_ref_form(v: &Value) -> std::result::Result<FaceRefForm<'_>, &'static str> {
     if let Some(name) = v.as_str() {
         if name.is_empty() || name.len() > 512 {
-            return Err(bad(cmd, "a face name is 1…512 characters"));
+            return Err("a face name is 1…512 characters");
         }
-        let st = if crate::frames::mapped() { s.model.state() } else { s.world_state() };
-        return solidcraft_doc::naming::named_face_point(&st, body, name).map_err(|why| bad(cmd, why));
+        return Ok(FaceRefForm::Name(name));
     }
-    vec3(v).or_else(|| v.get("point").and_then(vec3)).ok_or_else(|| bad(cmd, "a face is a point [x, y, z] on it, or its name from model.faces"))
+    vec3(v).or_else(|| v.get("point").and_then(vec3)).map(FaceRefForm::Point).ok_or("a face is a point [x, y, z] on it, or its name from model.faces")
 }
 
 /// The body face under a point: (mesh, face index, distance, body).

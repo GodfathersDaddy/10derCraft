@@ -2,7 +2,10 @@
 use crate::{SolveApp, scenario, theme::Tokens};
 use serde_json::{Value, json};
 #[derive(Clone)]
-struct Cached{revision:u64,value:Value}
+struct Cached {
+    revision: u64,
+    value: Value,
+}
 fn enabled(app: &SolveApp) -> bool {
     app.session.doc.metadata.get("org.solidcraft.robot-workflow").is_some()
 }

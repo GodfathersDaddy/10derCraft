@@ -8,7 +8,7 @@
 //! (icon, accent, theme, pixel size). A master never carries a colour of its own: it names a
 //! palette role, which resolves to the theme's hex, or to the accent's hex for the `active-*`
 //! roles. GAP instead erases preceding artwork to transparency; it never paints a background.
-//! Changing a colour is an edit to `palette.toml` only.
+//! `palette.toml` owns defaults; theme files may override display roles and semantic ramps.
 //!
 //! Nothing here panics on bad artwork: a master that does not parse is logged and drawn as the
 //! placeholder, and `every_master_parses` holds that none do.
@@ -22,6 +22,54 @@ include!(concat!(env!("OUT_DIR"), "/icon_data.rs"));
 
 /// The id drawn for every icon that has no master yet.
 pub const PLACEHOLDER: &str = "placeholder";
+
+/// Opt-in icon discovery on the UI thread. Disabled rendering only checks a thread-local flag.
+pub mod audit {
+    use std::cell::{Cell, RefCell};
+    use std::collections::BTreeMap;
+
+    /// One requested semantic id and the artwork actually selected by the renderer.
+    #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+    pub struct Requested {
+        pub name: String,
+        pub master: String,
+        pub placeholder: bool,
+    }
+
+    thread_local! {
+        static ACTIVE: Cell<bool> = const { Cell::new(false) };
+        static REQUESTS: RefCell<BTreeMap<String, Requested>> = const { RefCell::new(BTreeMap::new()) };
+    }
+
+    /// Enable collection and reset the accumulated names.
+    pub fn start() {
+        REQUESTS.with(|requests| requests.borrow_mut().clear());
+        ACTIVE.set(true);
+    }
+
+    /// Drain sorted, unique requests; collection stays enabled until `stop`.
+    pub fn take() -> Vec<Requested> {
+        REQUESTS.with(|requests| std::mem::take(&mut *requests.borrow_mut()).into_values().collect())
+    }
+
+    /// Disable collection, releasing any requests that were not taken.
+    pub fn stop() {
+        ACTIVE.set(false);
+        REQUESTS.with(|requests| requests.borrow_mut().clear());
+    }
+
+    pub(super) fn record(name: &str, resolved: super::Resolved) {
+        if ACTIVE.get() {
+            REQUESTS.with(|requests| {
+                requests.borrow_mut().entry(name.to_owned()).or_insert_with(|| Requested {
+                    name: name.to_owned(),
+                    master: resolved.master.to_owned(),
+                    placeholder: resolved.placeholder,
+                });
+            });
+        }
+    }
+}
 
 /// How a shape is painted.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -383,6 +431,37 @@ impl Doc {
 // ---------------------------------------------------------------------------------------------
 // Rendering
 
+/// Theme-file overrides for stable SVG roles and semantic active-face ramps.
+/// Fixed-size storage keeps Tokens/Look copyable and bounds imported palette size.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct Palette {
+    pub(crate) roles: [Option<[u8; 3]>; ROLE_NAMES.len()],
+    pub(crate) accents: [Option<[[u8; 3]; 3]>; ACCENT_NAMES.len() + 1],
+}
+
+impl Palette {
+    fn rgb(self, role: usize, accent: Option<usize>) -> Option<[u8; 3]> {
+        let name = ROLE_NAMES.get(role)?;
+        let face = match *name {
+            "active-1" => Some(0),
+            "active-2" => Some(1),
+            "active-3" => Some(2),
+            _ => None,
+        };
+        if let Some(face) = face {
+            let ramp = self.accents.get(accent.map_or(0, |a| a.saturating_add(1))).copied().flatten();
+            if let Some(rgb) = ramp.and_then(|r| r.get(face).copied()) {
+                return Some(rgb);
+            }
+            // A base ramp never overwrites a semantic accent that the theme omitted.
+            if accent.is_some() {
+                return None;
+            }
+        }
+        self.roles.get(role).copied().flatten()
+    }
+}
+
 /// The colours of one drawing: the theme and an accent (index into `ACCENT_NAMES`, or `None` for
 /// the base palette).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -390,14 +469,16 @@ pub struct Look {
     pub dark: bool,
     pub accent: Option<usize>,
     pub vision: crate::theme::ColorVision,
+    pub palette: Option<Palette>,
 }
 
 impl Look {
+    pub fn themed(dark: bool, accent: Option<usize>, vision: crate::theme::ColorVision) -> Self {
+        Self { dark, accent, vision, palette: crate::theme::Tokens::themed(dark, vision).icon_palette }
+    }
+
     fn rgb(self, role: usize) -> [u8; 3] {
         let theme = usize::from(self.dark);
-        if ROLE_NAMES.get(role) == Some(&"guide") {
-            return PALETTE.get(theme).and_then(|p| p.get(role)).copied().unwrap_or([255, 0, 255]);
-        }
         let vision = match self.vision {
             crate::theme::ColorVision::Off => "",
             crate::theme::ColorVision::Protan | crate::theme::ColorVision::Deutan => "red-green",
@@ -405,6 +486,12 @@ impl Look {
         };
         if let Some((_, _, _, l, d)) = ACCENT_VARIANTS.iter().find(|(v, a, r, _, _)| *v == vision && Some(*a) == self.accent && *r == role) {
             return if self.dark { *d } else { *l };
+        }
+        if let Some(rgb) = self.palette.and_then(|p| p.rgb(role, self.accent)) {
+            return rgb;
+        }
+        if ROLE_NAMES.get(role) == Some(&"guide") {
+            return PALETTE.get(theme).and_then(|p| p.get(role)).copied().unwrap_or([255, 0, 255]);
         }
         if let Some((_, l, d)) = self.accent.and_then(|a| ACCENTS.get(a)).and_then(|items| items.iter().find(|(r, _, _)| *r == role)) {
             return if self.dark { *d } else { *l };
@@ -422,6 +509,33 @@ impl Look {
     }
 }
 
+/// Explicit whole-glyph tinting maps shaded passive faces to the selected active ramp.
+/// Keep ink, guides, literal mask colours and knockouts in their original roles.
+#[derive(Clone, Copy)]
+struct PaintLook {
+    look: Look,
+    tint_passive: bool,
+}
+
+impl PaintLook {
+    fn resolve(self, paint: Paint) -> Option<[u8; 3]> {
+        if self.tint_passive
+            && let Paint::Role(role) = paint
+        {
+            let active = match ROLE_NAMES.get(role).copied() {
+                Some("passive-1") => Some("active-1"),
+                Some("passive-2") => Some("active-2"),
+                Some("passive-3") => Some("active-3"),
+                _ => None,
+            };
+            if let Some(role) = active.and_then(|name| ROLE_NAMES.iter().position(|role| *role == name)) {
+                return Some(self.look.rgb(role));
+            }
+        }
+        self.look.resolve(paint)
+    }
+}
+
 fn paint_of(c: [u8; 3], alpha: f32) -> sk::Paint<'static> {
     let mut p = sk::Paint::default();
     p.set_color_rgba8(c[0], c[1], c[2], (alpha.clamp(0.0, 1.0) * 255.0).round() as u8);
@@ -429,7 +543,7 @@ fn paint_of(c: [u8; 3], alpha: f32) -> sk::Paint<'static> {
     p
 }
 
-fn shape_paint(paint: Paint, look: Look, alpha: f32) -> Option<sk::Paint<'static>> {
+fn shape_paint(paint: Paint, look: PaintLook, alpha: f32) -> Option<sk::Paint<'static>> {
     if paint == Paint::Knockout {
         let mut paint = paint_of([0, 0, 0], alpha);
         paint.blend_mode = sk::BlendMode::DestinationOut;
@@ -439,7 +553,7 @@ fn shape_paint(paint: Paint, look: Look, alpha: f32) -> Option<sk::Paint<'static
     }
 }
 
-fn draw_node(pm: &mut sk::Pixmap, n: &Node, look: Look, tf: sk::Transform, doc: &Doc, clip: Option<&sk::Mask>, opacity: f32) {
+fn draw_node(pm: &mut sk::Pixmap, n: &Node, look: PaintLook, tf: sk::Transform, doc: &Doc, clip: Option<&sk::Mask>, opacity: f32) {
     let own;
     let mask = if let Some(m) = n.mask {
         own = doc.masks.get(m).and_then(|nodes| {
@@ -475,7 +589,7 @@ fn draw_node(pm: &mut sk::Pixmap, n: &Node, look: Look, tf: sk::Transform, doc: 
     }
 }
 
-fn draw_items(pm: &mut sk::Pixmap, items: &[Item], look: Look, tf: sk::Transform, doc: &Doc, clip: Option<&sk::Mask>, opacity: f32) {
+fn draw_items(pm: &mut sk::Pixmap, items: &[Item], look: PaintLook, tf: sk::Transform, doc: &Doc, clip: Option<&sk::Mask>, opacity: f32) {
     for item in items {
         match item {
             Item::Node(n) => draw_node(pm, n, look, tf, doc, clip, opacity),
@@ -495,6 +609,15 @@ fn draw_items(pm: &mut sk::Pixmap, items: &[Item], look: Look, tf: sk::Transform
 
 /// Rasterise `doc` into a square `px` × `px` premultiplied RGBA image.
 pub fn render(doc: &Doc, look: Look, px: u32) -> Option<sk::Pixmap> {
+    render_with_look(doc, PaintLook { look, tint_passive: false }, px)
+}
+
+/// Tint passive faces through the active ramp while retaining shading and all geometry.
+pub(crate) fn render_tinted(doc: &Doc, look: Look, px: u32) -> Option<sk::Pixmap> {
+    render_with_look(doc, PaintLook { look, tint_passive: true }, px)
+}
+
+fn render_with_look(doc: &Doc, look: PaintLook, px: u32) -> Option<sk::Pixmap> {
     let mut pm = sk::Pixmap::new(px, px)?;
     let s = px as f32 / 64.0;
     draw_items(&mut pm, &doc.items, look, sk::Transform::from_scale(s, s), doc, None, 1.0);
@@ -534,7 +657,7 @@ pub struct Resolved {
     pub placeholder: bool,
 }
 
-fn accent_index(name: &str) -> Option<usize> {
+pub(crate) fn accent_index(name: &str) -> Option<usize> {
     if name.is_empty() { None } else { ACCENT_NAMES.iter().position(|a| *a == name) }
 }
 
@@ -545,7 +668,7 @@ fn default_accent(name: &str) -> Option<usize> {
 
 /// Primary semantic stroke, also used by toolbar affordances. The palette owns its value.
 pub(crate) fn primary(name: &str, dark: bool, vision: crate::theme::ColorVision) -> egui::Color32 {
-    let look = Look { dark, accent: resolve(name).accent, vision };
+    let look = Look::themed(dark, resolve(name).accent, vision);
     role_colour("active-3", look)
 }
 
@@ -561,6 +684,12 @@ pub(crate) fn role_colour(name: &str, look: Look) -> egui::Color32 {
 /// The master and accent for an app icon id: an alias (with its accent), a master of that name,
 /// or the placeholder.
 pub fn resolve(name: &str) -> Resolved {
+    let resolved = resolve_master(name);
+    audit::record(name, resolved);
+    resolved
+}
+
+fn resolve_master(name: &str) -> Resolved {
     let (big, _) = table();
     let placeholder = Resolved { master: PLACEHOLDER, accent: None, placeholder: true };
     if let Some((_, master, accent)) = ALIASES.iter().find(|(a, _, _)| *a == name) {
@@ -585,6 +714,7 @@ pub fn doc_for(master: &str, px: u32) -> Option<&'static Doc> {
 }
 
 /// Every master id (not the small variants), for tests and tooling.
+#[cfg(test)]
 pub fn master_ids() -> Vec<&'static str> {
     let mut v: Vec<_> = table().0.keys().copied().collect();
     v.sort_unstable();
@@ -628,7 +758,7 @@ mod tests {
         assert_eq!(blue.stroke, Paint::Role(active));
         for dark in [false, true] {
             for accent in std::iter::once(None).chain((0..ACCENT_NAMES.len()).map(Some)) {
-                let look = Look { dark, accent, vision: crate::theme::ColorVision::Off };
+                let look = Look { dark, accent, vision: crate::theme::ColorVision::Off, palette: None };
                 assert_eq!(look.rgb(guide), PALETTE[usize::from(dark)][guide]);
                 let pm = render(&doc, look, 64).unwrap();
                 assert_eq!([pm.pixel(9, 20).unwrap().red(), pm.pixel(9, 20).unwrap().green(), pm.pixel(9, 20).unwrap().blue()], look.rgb(guide));
@@ -642,7 +772,7 @@ mod tests {
         let doc = Doc::parse("<svg><path d='M0 0L64 0L64 64L0 64Z' fill='#8e9faf'/><circle cx='20' cy='20' r='10' fill='#ffffff'/><circle cx='20' cy='20' r='3' fill='#236ead'/><path d='M8 44L56 44' stroke='#ffffff' stroke-width='6'/><circle cx='44' cy='20' r='6' fill='#ffffff' opacity='0.5'/></svg>").unwrap();
         for dark in [false, true] {
             for accent in std::iter::once(None).chain((0..ACCENT_NAMES.len()).map(Some)) {
-                let look = Look { dark, accent, vision: crate::theme::ColorVision::Off };
+                let look = Look { dark, accent, vision: crate::theme::ColorVision::Off, palette: None };
                 let pm = render(&doc, look, 64).unwrap();
                 assert_eq!(pm.pixel(26, 20).unwrap().alpha(), 0, "fill must reveal the real background");
                 assert_eq!(pm.pixel(20, 44).unwrap().alpha(), 0, "stroke must reveal the real background");
@@ -656,7 +786,7 @@ mod tests {
     #[test]
     fn knockout_respects_its_clip_and_combines_explicit_masks_with_clips() {
         let doc = Doc::parse("<svg><defs><clipPath id='left'><path d='M0 0L32 0L32 64L0 64Z'/></clipPath><mask id='all'><path d='M0 0L64 0L64 64L0 64Z' fill='white'/></mask></defs><path d='M0 0L64 0L64 64L0 64Z' fill='#8e9faf'/><g clip-path='url(#left)'><circle cx='32' cy='32' r='16' fill='#ffffff' mask='url(#all)'/></g></svg>").unwrap();
-        let pm = render(&doc, Look { dark: false, accent: None, vision: crate::theme::ColorVision::Off }, 64).unwrap();
+        let pm = render(&doc, Look { dark: false, accent: None, vision: crate::theme::ColorVision::Off, palette: None }, 64).unwrap();
         assert_eq!(pm.pixel(24, 32).unwrap().alpha(), 0);
         assert_eq!(pm.pixel(40, 32).unwrap().alpha(), 255, "cutout must not escape its parent clip");
     }
@@ -664,7 +794,7 @@ mod tests {
     #[test]
     fn accepted_badges_and_environment_sun_have_transparent_holes() {
         for dark in [false, true] {
-            let look = Look { dark, accent: None, vision: crate::theme::ColorVision::Off };
+            let look = Look { dark, accent: None, vision: crate::theme::ColorVision::Off, palette: None };
             assert_eq!(role_colour("gap", look), egui::Color32::TRANSPARENT);
             for (id, x, y) in [("contact_new", 48, 48), ("environment_map", 45, 19), ("line_mid", 35, 28)] {
                 let pm = render(doc_for(id, 64).unwrap(), look, 64).unwrap();
@@ -677,7 +807,7 @@ mod tests {
     fn native_clip_paths_and_plus_mask_keep_the_artwork_inside_its_shape() {
         for dark in [false, true] {
             for px in [16, 24, 64] {
-                let look = Look { dark, accent: None, vision: crate::theme::ColorVision::Off };
+                let look = Look { dark, accent: None, vision: crate::theme::ColorVision::Off, palette: None };
                 for id in ["environment_map", "curvature_map", "iso_analysis", "zebra"] {
                     let doc = doc_for(id, px).unwrap();
                     let pm = render(doc, look, px).unwrap();
@@ -685,7 +815,8 @@ mod tests {
                     assert!(pm.pixel(px / 2, px / 2).unwrap().alpha() > 0, "{id} lost its clipped contents");
                 }
             }
-            let pm = render(doc_for("new", 64).unwrap(), Look { dark, accent: None, vision: crate::theme::ColorVision::Off }, 64).unwrap();
+            let pm =
+                render(doc_for("new", 64).unwrap(), Look { dark, accent: None, vision: crate::theme::ColorVision::Off, palette: None }, 64).unwrap();
             assert_eq!(pm.pixel(45, 45).unwrap().alpha(), 0, "the plus is genuinely punched out in the native renderer");
         }
     }
@@ -718,6 +849,41 @@ mod tests {
     }
 
     #[test]
+    fn shipped_icon_palettes_preserve_alpha_shading_and_colour_vision_overrides() {
+        for file in crate::theme_files::builtin() {
+            let tokens = crate::theme_files::resolve(file);
+            let palette = tokens.icon_palette.expect("shipped icon palette");
+            // Two colours can't make a pale/medium/strong ramp three distinct shades (1-bit, 1-bit Dark).
+            for ramp in palette.accents.into_iter().flatten().filter(|_| !crate::theme_files::is_two_colour(&file.id)) {
+                // Ordered faces stay visibly distinct without changing accepted paths.
+                assert_ne!(ramp[0], ramp[1], "{} pale/medium", file.id);
+                assert_ne!(ramp[1], ramp[2], "{} medium/strong", file.id);
+            }
+            for vision in crate::theme::ColorVision::ALL {
+                for name in ["extrude", "surface_extrude", "mesh_export", "line", "c_parallel", "construction"] {
+                    let resolved = resolve(name);
+                    let plain = Look { dark: file.base.is_dark(), accent: resolved.accent, vision, palette: None };
+                    let custom = Look { palette: Some(palette), ..plain };
+                    let doc = doc_for(resolved.master, 32).unwrap();
+                    let before = render(doc, plain, 32).unwrap();
+                    let after = render(doc, custom, 32).unwrap();
+                    assert!(before.pixels().iter().zip(after.pixels()).all(|(a, b)| a.alpha() == b.alpha()), "{} {name} alpha", file.id);
+                    for (variant, accent, role, light, dark) in ACCENT_VARIANTS {
+                        let selected = match vision {
+                            crate::theme::ColorVision::Off => "",
+                            crate::theme::ColorVision::Protan | crate::theme::ColorVision::Deutan => "red-green",
+                            crate::theme::ColorVision::Tritan => "blue-yellow",
+                        };
+                        if *variant == selected && Some(*accent) == custom.accent {
+                            assert_eq!(custom.rgb(*role), if file.base.is_dark() { *dark } else { *light });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn semantic_ui_tokens_and_icon_strokes_share_the_palette_including_accessibility() {
         for dark in [false, true] {
             for vision in crate::theme::ColorVision::ALL {
@@ -737,7 +903,7 @@ mod tests {
             let resolved = resolve(id);
             for dark in [false, true] {
                 for vision in ColorVision::ALL {
-                    let look = Look { dark, accent: resolved.accent, vision };
+                    let look = Look { dark, accent: resolved.accent, vision, palette: None };
                     let base = Look { accent: None, ..look };
                     for role in ["ink", "line", "passive-1", "passive-2", "passive-3", "gap"] {
                         let role = ROLE_NAMES.iter().position(|name| *name == role).unwrap();
@@ -807,7 +973,7 @@ mod tests {
         let source = SVGS.iter().find(|(id, fam, _)| *id == "folder" && *fam == "model").unwrap().2;
         let expected = Doc::parse(source).unwrap();
         for dark in [false, true] {
-            let look = Look { dark, accent: None, vision: crate::theme::ColorVision::Off };
+            let look = Look { dark, accent: None, vision: crate::theme::ColorVision::Off, palette: None };
             let actual = render(doc_for("folder", 64).unwrap(), look, 64).unwrap();
             let reviewed = render(&expected, look, 64).unwrap();
             assert_eq!(actual.data(), reviewed.data());
@@ -831,7 +997,7 @@ mod tests {
             for dark in [false, true] {
                 for px in [16, 20, 26, 64] {
                     let Some(doc) = doc_for(id, px) else { panic!("{id}") };
-                    let pm = render(doc, Look { dark, accent: None, vision: crate::theme::ColorVision::Off }, px)
+                    let pm = render(doc, Look { dark, accent: None, vision: crate::theme::ColorVision::Off, palette: None }, px)
                         .unwrap_or_else(|| panic!("{id} at {px}"));
                     assert!(coverage(&pm) > 8, "{id} at {px}px (dark {dark}) is blank");
                 }
@@ -846,13 +1012,15 @@ mod tests {
     #[test]
     fn dark_theme_and_accents_change_colour_not_shape() {
         let doc = doc_for("extrude", 64).unwrap_or_else(|| panic!("extrude"));
-        let light = render(doc, Look { dark: false, accent: None, vision: crate::theme::ColorVision::Off }, 64).unwrap_or_else(|| panic!("render"));
-        let dark = render(doc, Look { dark: true, accent: None, vision: crate::theme::ColorVision::Off }, 64).unwrap_or_else(|| panic!("render"));
+        let light = render(doc, Look { dark: false, accent: None, vision: crate::theme::ColorVision::Off, palette: None }, 64)
+            .unwrap_or_else(|| panic!("render"));
+        let dark = render(doc, Look { dark: true, accent: None, vision: crate::theme::ColorVision::Off, palette: None }, 64)
+            .unwrap_or_else(|| panic!("render"));
         assert_ne!(rgba(&light), rgba(&dark));
         let r = resolve("surface_extrude");
         assert_eq!(r.master, "extrude");
-        let surface =
-            render(doc, Look { dark: false, accent: r.accent, vision: crate::theme::ColorVision::Off }, 64).unwrap_or_else(|| panic!("render"));
+        let surface = render(doc, Look { dark: false, accent: r.accent, vision: crate::theme::ColorVision::Off, palette: None }, 64)
+            .unwrap_or_else(|| panic!("render"));
         assert!(r.accent.is_some());
         assert_ne!(rgba(&light), rgba(&surface));
         // Same silhouette: the alpha channel is identical.
@@ -890,5 +1058,37 @@ mod tests {
         assert!(ROLE_NAMES.contains(&"line"));
         assert_eq!(PALETTE.len(), 2);
         assert!(PALETTE.iter().all(|p| p.len() == ROLE_NAMES.len()));
+    }
+
+    #[test]
+    fn danger_tint_preserves_faces_outlines_and_transparent_details() {
+        for dark in [false, true] {
+            for vision in crate::theme::ColorVision::ALL {
+                let look = Look { dark, accent: accent_index("constraint"), vision, palette: None };
+                for id in ["delete", "new", "extrude"] {
+                    for px in [16, 20, 64] {
+                        let doc = doc_for(id, px).unwrap();
+                        let normal = render(doc, look, px).unwrap();
+                        let tinted = render_tinted(doc, look, px).unwrap();
+                        assert!(
+                            normal.pixels().iter().zip(tinted.pixels()).all(|(a, b)| a.alpha() == b.alpha()),
+                            "{id}/{px}: preserve contours, handle, slat cutouts and masks"
+                        );
+                        if id == "delete" && px == 64 {
+                            let image = egui::ColorImage::from_rgba_premultiplied([64, 64], tinted.data());
+                            for role in ["ink", "active-2", "active-3"] {
+                                assert!(
+                                    image.pixels.contains(&role_colour(role, look)),
+                                    "{role}, dark={dark}/{vision:?}: retain separate face and outline colours"
+                                );
+                            }
+                            for role in ["passive-2", "passive-3"] {
+                                assert!(!image.pixels.contains(&role_colour(role, look)), "{role}: bin faces must take the red ramp");
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

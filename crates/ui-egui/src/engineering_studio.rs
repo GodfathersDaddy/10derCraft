@@ -29,7 +29,7 @@ pub fn tab_for_page(page: &str) -> &'static str {
         "variants" => "VARIANTS",
         "studies" => "STUDIES",
         "loads" => "LOAD PATHS",
-        _ => "SOLID",
+        _ => "MODEL",
     }
 }
 
@@ -250,38 +250,34 @@ pub fn show_dialogs(app: &mut SolveApp, ctx: &egui::Context) {
         "loads" => "Mechanische Lastpfade",
         _ => "Engineering",
     };
-    let mut open = true;
-    crate::frame::window(
-        ctx,
-        RichText::new(title).strong().size(13.0),
-        if page == "interfaces" { crate::frame::Width::Normal } else { crate::frame::Width::Wide },
-    )
-    .id(egui::Id::new(("engineering_tool_window", &page)))
-    .open(&mut open)
-    .resizable(true)
-    .default_width(if page == "interfaces" { 380. } else { 740. })
-    .default_height(520.)
-    .constrain_to(ctx.content_rect().shrink(8.))
-    .collapsible(false)
-    .show(ctx, |ui| {
-        scenario::publish_handle("studio:dialog:open", ui.min_rect().center());
-        match page.as_str() {
-            "system" => system(app, ui),
-            "fem" => fem(app, ui),
-            "interfaces" => {crate::mechanics_ui::show(app,ui,false);if app.session.studio.enabled {ui.collapsing("Alte Sitzungsentwürfe / Roboterdemo",|ui|interface_form(app,ui));}},
-            "variants" => variants(app, ui),
-            "studies" => studies(app, ui),
-            "loads" => {
-                crate::mechanics_ui::show(app,ui,true);
+    let open = true;
+    let closed = crate::ui_kit::Window::new(egui::Id::new(("engineering_tool_window", &page)), "graph", title)
+        .cards(if page == "interfaces" { 1.5 } else { 3. })
+        .page_rows(24.)
+        .show_body(ctx, |ui| {
+            scenario::publish_handle("studio:dialog:open", ui.min_rect().center());
+            match page.as_str() {
+                "system" => system(app, ui),
+                "fem" => fem(app, ui),
+                "interfaces" => {
+                    crate::mechanics_ui::show(app, ui, false);
+                    if app.session.studio.enabled {
+                        ui.collapsing("Alte Sitzungsentwürfe / Roboterdemo", |ui| interface_form(app, ui));
+                    }
+                }
+                "variants" => variants(app, ui),
+                "studies" => studies(app, ui),
+                "loads" => {
+                    crate::mechanics_ui::show(app, ui, true);
+                }
+                _ => {}
             }
-            _ => {}
-        }
-        ui.separator();
-        if button(ui, "studio:dialog:close", "Schließen") {
-            app.ui.engineering_dialog = None;
-        }
-    });
-    if !open || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            ui.separator();
+            if button(ui, "studio:dialog:close", "Schließen") {
+                app.ui.engineering_dialog = None;
+            }
+        });
+    if closed || !open || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
         app.ui.engineering_dialog = None;
     }
 }
@@ -302,9 +298,18 @@ fn representation(app: &mut SolveApp, ui: &mut egui::Ui) {
 }
 
 fn system(app: &mut SolveApp, ui: &mut egui::Ui) {
-    crate::robot_ui::motion(app,ui);
-    if !app.session.doc.occurrences.is_empty() {egui::ScrollArea::vertical().id_salt("mks_workspace_scroll").max_height((ui.ctx().content_rect().height()-160.).max(320.)).show(ui,|ui|crate::mks_ui::show(app,ui));return;}
-    if crate::mechanics_ui::has_project(app) {crate::mechanics_ui::show(app,ui,true);return;}
+    crate::robot_ui::motion(app, ui);
+    if !app.session.doc.occurrences.is_empty() {
+        egui::ScrollArea::vertical()
+            .id_salt("mks_workspace_scroll")
+            .max_height((ui.ctx().content_rect().height() - 160.).max(320.))
+            .show(ui, |ui| crate::mks_ui::show(app, ui));
+        return;
+    }
+    if crate::mechanics_ui::has_project(app) {
+        crate::mechanics_ui::show(app, ui, true);
+        return;
+    }
     representation(app, ui);
     ui.separator();
     note(ui, "Mechanik: F/M und v/ω, bidirektional. Gestrichelt: gerichtete Signale. Gelenke sind eigene Kopplungselemente.");
@@ -485,7 +490,9 @@ fn system(app: &mut SolveApp, ui: &mut egui::Ui) {
 }
 
 fn fem(app: &mut SolveApp, ui: &mut egui::Ui) {
-    if crate::robot_ui::fem(app,ui){return;}
+    if crate::robot_ui::fem(app, ui) {
+        return;
+    }
     note(ui, "FEM / ROM verwendet dasselbe Blockmodell und dieselben Ports wie die Mehrkoerpersimulation.");
     system(app, ui);
 }

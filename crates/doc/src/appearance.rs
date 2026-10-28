@@ -135,15 +135,22 @@ impl Appearances {
 #[path = "../../../assets/appearances/library.rs"]
 mod defaults;
 pub use defaults::LIBRARY;
+#[path = "../../../assets/appearances/opaque_finishes.rs"]
+mod finishes;
+pub use finishes::OPAQUE_FINISHES;
 
 /// A library appearance by name (case-insensitive).
 pub fn library(name: &str) -> Option<Look> {
-    LIBRARY.iter().find(|(n, _, _)| n.eq_ignore_ascii_case(name.trim())).map(|(n, c, o)| Look {
-        name: n.to_string(),
-        color: *c,
-        opacity: *o,
-        pbr: None,
-    })
+    LIBRARY
+        .iter()
+        .find(|(n, _, _)| n.eq_ignore_ascii_case(name.trim()))
+        .map(|(n, c, o)| Look { name: n.to_string(), color: *c, opacity: *o, pbr: None })
+        .or_else(|| {
+            let (name, color, metallic, roughness) = OPAQUE_FINISHES.iter().find(|(n, ..)| n.eq_ignore_ascii_case(name.trim()))?;
+            let pbr = crate::pbr_appearance::PbrParameters::new(*metallic, *roughness, 1.5).ok()?;
+            Some(Look { name: (*name).to_string(), color: *color, opacity: 1.0, pbr: Some(pbr) })
+        })
+        .or_else(|| crate::appearance_pack::find(name)?.opaque_look().ok())
 }
 
 /// The look a physical material gives a body that has no appearance of its own.
@@ -194,26 +201,30 @@ impl Document {
     /// The faces of a body with appearances of their own: (B-rep face index, look). A later
     /// assignment to the same face wins.
     pub fn face_colors(&self, b: &crate::ModelBody) -> Vec<(usize, Look)> {
-        // Face colours the body was imported with, under the design's own.
+        // An assigned body appearance replaces imported paint; design face appearances still win.
         let to8 = |x: f32| (x.clamp(0.0, 1.0) * 255.0).round() as u8;
-        let mut out: Vec<(usize, Look)> = match b.body.paint() {
-            Some(p) => p.faces.iter().map(|f| (f.face, Look::custom(f.color.map(to8), f.opacity as f64))).collect(),
-            // Carried from an earlier version of the body: by face name (worked out only here:
-            // the viewport asks every body for its face colours on every change).
-            None => match &b.imported {
-                Some(imp) => crate::naming::face_names(b)
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(i, n)| imp.faces.get(crate::naming::strip_piece(n)).map(|(c, o)| (i, Look::custom(c.map(to8), *o as f64))))
-                    .collect(),
-                None => Vec::new(),
-            },
+        let mut out: Vec<(usize, Look)> = if self.appearances.bodies.contains_key(b.definition_name()) {
+            Vec::new()
+        } else {
+            match b.body.paint() {
+                Some(p) => p.faces.iter().map(|f| (f.face, Look::custom(f.color.map(to8), f.opacity as f64))).collect(),
+                // Carried from an earlier version of the body: by face name (worked out only here:
+                // the viewport asks every body for its face colours on every change).
+                None => match &b.imported {
+                    Some(imp) => crate::naming::face_names(b)
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, n)| imp.faces.get(crate::naming::strip_piece(n)).map(|(c, o)| (i, Look::custom(c.map(to8), *o as f64))))
+                        .collect(),
+                    None => Vec::new(),
+                },
+            }
         };
         for f in self.appearances.faces.iter().filter(|f| f.body == b.definition_name()) {
             let (p, look) = (crate::apply_point(&b.source_transform, f.point), f.look.clone());
             if f.strict_name {
                 let Some(name) = f.name.as_ref() else { continue };
-                let Some(origin_feature) = name.strip_prefix('F').and_then(|name| name.split_once(':')).and_then(|(id, _)| id.parse().ok()) else {
+                let Some(origin_feature) = crate::persistent_name::made_by(name) else {
                     continue;
                 };
                 let target = crate::config::ConfigFaceTarget {
@@ -317,6 +328,78 @@ pub(crate) fn closest_on_triangle(p: Vec3, a: Vec3, b: Vec3, c: Vec3) -> Vec3 {
 mod tests {
     use super::*;
 
+    /// Only an appearance change is appearance-only: with any other field changed too, or with
+    /// nothing changed, the model must be evaluated as usual.
+    #[test]
+    fn appearance_only_changes_are_proved_on_the_whole_document() {
+        let before = crate::Document::default();
+        let mut painted = before.clone();
+        painted.appearances.bodies.insert("Body1".into(), Look::custom([255, 0, 0], 0.5));
+        assert!(painted.differs_only_in_appearance(&before));
+        assert!(before.differs_only_in_appearance(&painted), "clearing it too");
+        assert!(!before.differs_only_in_appearance(&before.clone()), "nothing changed");
+        let mut mixed = painted.clone();
+        mixed.materials.insert("Body1".into(), "Steel".into());
+        assert!(!mixed.differs_only_in_appearance(&before), "a material change is not appearance-only");
+    }
+
+    fn imported_box() -> crate::ModelBody {
+        let body = solidcraft_kernel::box_solid(Vec3::ZERO, Vec3::new(10., 10., 10.)).unwrap();
+        let faces = body
+            .faces(0.01)
+            .unwrap()
+            .iter()
+            .map(|face| solidcraft_kernel::FacePaint { face: face.index, color: [1., 0., 0.], opacity: 0.5 })
+            .collect();
+        crate::ModelBody::new("Imported".into(), body.with_paint(Some(solidcraft_kernel::Paint { opacity: 1., faces })), 1)
+    }
+
+    fn check_imported_appearance_precedence(body: &crate::ModelBody) {
+        let mut doc = Document::default();
+        let face_count = body.body.faces(0.01).unwrap().len();
+        let imported = doc.face_colors(body);
+        assert_eq!(imported.len(), face_count);
+        assert!(imported.iter().all(|(_, look)| *look == Look::custom([255, 0, 0], 0.5)));
+
+        let body_look = Look::custom([0, 0, 255], 0.8);
+        doc.appearances.bodies.insert(body.definition_name().into(), body_look.clone());
+        assert_eq!(doc.model_body_look(body), Some(body_look.clone()));
+        assert_eq!(doc.model_body_opacity(body), body_look.opacity);
+        assert!(doc.face_colors(body).is_empty(), "all faces must inherit the assigned body appearance");
+
+        let face_look = Look::custom([0, 255, 0], 1.);
+        let name = crate::naming::face_names(body)[0].clone();
+        doc.appearances.faces.push(FaceLook {
+            body: body.definition_name().into(),
+            point: Vec3::ZERO,
+            look: face_look.clone(),
+            name: Some(name),
+            strict_name: false,
+            certificate: None,
+        });
+        assert_eq!(doc.face_colors(body), vec![(0, face_look.clone())]);
+
+        doc.appearances.bodies.clear();
+        let restored = doc.face_colors(body);
+        assert_eq!(restored.len(), face_count);
+        assert!(restored.iter().all(|(face, look)| *look == if *face == 0 { face_look.clone() } else { Look::custom([255, 0, 0], 0.5) }));
+    }
+
+    #[test]
+    fn body_appearance_overrides_imported_face_paint() {
+        check_imported_appearance_precedence(&imported_box());
+    }
+
+    #[test]
+    fn body_appearance_overrides_carried_imported_face_paint() {
+        let mut body = imported_box();
+        body.imported = ImportedLook::of(&body);
+        body.body = body.body.clone().with_paint(None);
+        body.source_name = Some(body.name.clone());
+        body.name = "Occurrence".into();
+        check_imported_appearance_precedence(&body);
+    }
+
     #[test]
     fn library_and_materials() {
         assert_eq!(library("abs - red").map(|l| l.color), Some([196, 40, 40]));
@@ -326,5 +409,123 @@ mod tests {
         assert!(material_look("Glass").is_some_and(|l| l.opacity < 1.0));
         assert_eq!(Look::custom([1, 2, 3], 7.0).opacity, 1.0);
         assert_eq!(Look::custom([255, 0, 16], 1.0).hex(), "#ff0010");
+    }
+    mod starter_pack {
+        use crate::appearance::Look;
+        use crate::appearance_pack::*;
+        use std::collections::BTreeSet;
+
+        #[test]
+        fn stable_ids_categories_and_original_licences_cover_the_requested_pack() {
+            let mut ids = BTreeSet::new();
+            let mut names = BTreeSet::new();
+            for preset in &STARTER_PACK {
+                assert!(preset.id.starts_with("starter.") && preset.id.len() <= 128);
+                assert!(preset.id.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-'));
+                assert!(ids.insert(preset.id));
+                assert!(names.insert(preset.name.to_ascii_lowercase()));
+                assert_eq!(preset.revision, 1);
+                assert_eq!(preset.provenance.license, "MIT OR Apache-2.0");
+                assert!(!preset.provenance.author.is_empty());
+                assert_eq!(preset.provenance.source, "assets/appearances/starter_pack.rs");
+                assert_eq!(find(preset.id), Some(preset));
+                assert_eq!(find(preset.name), Some(preset));
+            }
+            for (category, count) in [
+                (Category::Wood, 8),
+                (Category::Metal, 10),
+                (Category::Plastic, 10),
+                (Category::Glass, 6),
+                (Category::Solar, 2),
+                (Category::Regolith, 4),
+            ] {
+                assert_eq!(STARTER_PACK.iter().filter(|p| p.category == category).count(), count);
+            }
+        }
+
+        #[test]
+        fn opaque_construction_and_owned_look_roundtrip_preserve_current_response() {
+            let mut admitted = 0;
+            for preset in &STARTER_PACK {
+                if let Recipe::Opaque(recipe) = preset.recipe {
+                    let look = preset.opaque_look().unwrap();
+                    assert_eq!(look.opacity, 1.0);
+                    assert_eq!(look.color, recipe.color);
+                    let surface = look.opaque_surface().unwrap().unwrap();
+                    assert_eq!(surface.metallic(), recipe.metallic);
+                    assert_eq!(surface.roughness(), recipe.roughness);
+                    let json = serde_json::to_value(&look).unwrap();
+                    assert_eq!(serde_json::from_value::<Look>(json.clone()).unwrap(), look);
+                    assert!(json.get("provenance").is_none() && json.get("requirements").is_none() && json.get("id").is_none());
+                    assert_eq!(preset.requirements, &[Requirement::OpaquePbr]);
+                    admitted += 1;
+                }
+            }
+            assert_eq!(admitted, 34);
+        }
+
+        #[test]
+        fn glass_transmission_recipes_are_valid_but_never_scalar_or_alpha_looks() {
+            for preset in STARTER_PACK.iter().filter(|p| p.category == Category::Glass) {
+                let Recipe::Glass(recipe) = preset.recipe else { panic!("glass category must carry a glass recipe") };
+                recipe.validate().unwrap();
+                assert!(!preset.is_opaque());
+                assert!(preset.opaque_look().is_err());
+                assert_eq!(preset.requirements, &[Requirement::Refraction, Requirement::CertifiedThinOrClosed]);
+                // Compatibility of illustrative values only: the real optics adapter must
+                // derive and admit these absorption values after geometry certification.
+                assert!(recipe.transmission_linear_rgb.iter().all(|t| (-t.ln() / recipe.reference_path_mm) <= 100.0));
+                for channel in [0.0, -1.0, 1.01, f64::NAN, f64::INFINITY] {
+                    let mut bad = recipe;
+                    bad.transmission_linear_rgb[0] = channel;
+                    assert!(bad.validate().is_err());
+                }
+                let mut bad = recipe;
+                bad.reference_path_mm = 0.0;
+                assert!(bad.validate().is_err());
+                bad = recipe;
+                bad.boundary = GlassBoundary::Thin { thickness_mm: 10001.0 };
+                assert!(bad.validate().is_err());
+            }
+        }
+
+        #[test]
+        fn legacy_library_and_six_existing_finish_names_are_not_overridden_or_duplicated() {
+            assert_eq!(crate::appearance::LIBRARY.len(), 20);
+            for (name, color, opacity) in crate::appearance::LIBRARY {
+                let look = crate::appearance::library(name).unwrap();
+                assert_eq!(look.color, color);
+                assert_eq!(look.opacity, opacity);
+                assert!(look.pbr.is_none());
+                assert!(find(name).is_none());
+            }
+            for name in [
+                "Steel - Satin PBR",
+                "Aluminum - Satin PBR",
+                "Copper - Clean PBR",
+                "ABS - Molded PBR",
+                "PLA - Smooth PBR",
+                "Wood - Oak Uniform PBR Preview",
+            ] {
+                assert!(STARTER_PACK.iter().all(|p| !p.name.eq_ignore_ascii_case(name)), "existing #1366 finish must remain independent");
+            }
+        }
+
+        #[test]
+        fn uniform_previews_and_planned_resource_scale_are_explicit_and_not_bindings() {
+            let mut recipes = 0;
+            for preset in &STARTER_PACK {
+                if let Some(recipe) = preset.future_texture_recipe {
+                    assert!(preset.name.contains("Uniform Preview"));
+                    assert!(preset.preview_note.contains("Uniform opaque preview only"));
+                    assert_eq!(recipe.id, format!("{}.maps-v1", preset.id));
+                    assert!(recipe.repeat_mm.iter().all(|v| v.is_finite() && *v > 0.0 && *v <= 10000.0));
+                    assert_eq!(recipe.grain_axis, if preset.category == Category::Wood { Some(TextureAxis::V) } else { None });
+                    assert_eq!(preset.requirements, &[Requirement::OpaquePbr]);
+                    recipes += 1;
+                }
+            }
+            assert_eq!(recipes, 14);
+        }
     }
 }

@@ -115,7 +115,7 @@ impl<P: DeserializeOwned + JsonSchema + 'static> Contract for TypedContract<P> {
 }
 
 /// The most keys of one call that are looked at, and the longest key given a suggestion.
-const MAX_KEYS: usize = 64;
+pub(crate) const MAX_KEYS: usize = 64;
 const MAX_KEY_LEN: usize = 64;
 const MAX_MESSAGE_LEN: usize = 300;
 const MAX_WHOLE_LEN: usize = 4096;
@@ -127,6 +127,23 @@ const WHOLE: char = '\u{1}';
 /// `message`, marked as complete (see [`WHOLE`]).
 pub(crate) fn whole(message: impl std::fmt::Display) -> String {
     format!("{WHOLE}{message}")
+}
+
+/// Marks a deserializer's message that carries its own path: an error from a flattened
+/// `FeatureCommon`, which serde can't locate. The path (one of its field names) and the error
+/// follow as JSON.
+const LOCATED: char = '\u{2}';
+
+/// `e`, an error deserializing a flattened `FeatureCommon`, as a deserializer's message that
+/// keeps its path, for [`parse_issue`].
+pub(crate) fn located(e: &serde_path_to_error::Error<serde_json::Error>) -> String {
+    let located = serde_json::to_string(&(error_path(e), e.inner().to_string())).unwrap_or_default();
+    format!("{LOCATED}{located}")
+}
+
+fn error_path(e: &serde_path_to_error::Error<serde_json::Error>) -> String {
+    let path = e.path().to_string();
+    if path == "." { String::new() } else { path }
 }
 
 /// The top-level property names of a schema, following `allOf`/`anyOf`/`oneOf` and `$ref`s
@@ -207,10 +224,15 @@ fn nearest(key: &str, allowed: &BTreeSet<String>) -> Option<String> {
 }
 
 /// A deserialization failure as an issue, in the engine's style.
-fn parse_issue(e: &serde_path_to_error::Error<serde_json::Error>) -> Issue {
-    let path = e.path().to_string();
-    let path = if path == "." { String::new() } else { path };
+pub(crate) fn parse_issue(e: &serde_path_to_error::Error<serde_json::Error>) -> Issue {
+    let path = error_path(e);
     let inner = e.inner().to_string();
+    // An error from a flattened `FeatureCommon`: its field continues the path.
+    let (path, inner) = match inner.strip_prefix(LOCATED).and_then(|r| serde_json::from_str::<(String, String)>(r).ok()) {
+        Some((field, inner)) if path.is_empty() => (field, inner),
+        Some((field, inner)) => (format!("{path}.{field}"), inner),
+        None => (path, inner),
+    };
     if let Some(complete) = inner.strip_prefix(WHOLE) {
         // The handler's own message, which names the caller's value: in full up to a generous
         // cap, since the contract also checks keys the handler ignores (`side` without `thin`).
@@ -218,7 +240,7 @@ fn parse_issue(e: &serde_path_to_error::Error<serde_json::Error>) -> Issue {
     }
     let message = if let Some(field) = inner.strip_prefix("missing field `").and_then(|r| r.split('`').next()) {
         let at = if path.is_empty() { field.to_string() } else { format!("{path}.{field}") };
-        return Issue { path: at.clone(), message: format!("`{at}` is required"), suggestion: None };
+        return Issue { path: at.clone(), message: truncate(&format!("`{at}` is required"), MAX_MESSAGE_LEN), suggestion: None };
     } else if path.is_empty() {
         inner
     } else if inner.starts_with("must ") {
@@ -236,6 +258,20 @@ fn parse_issue(e: &serde_path_to_error::Error<serde_json::Error>) -> Issue {
     };
     // serde quotes the caller's value, which may be long.
     Issue { path, message: truncate(&message, MAX_MESSAGE_LEN), suggestion: None }
+}
+
+/// Run `handler` as the command `id`, checking the call against the contract `id` publishes
+/// (its [`CommandSpec::contract`](crate::cmd::CommandSpec::contract)), so the contract enforced is
+/// always the one described. With the level off and no audit recorder, this is exactly
+/// `handler(s, p)`, without looking anything up; a command without a contract just runs.
+pub fn run_checked_as(s: &mut Session, p: &Value, id: &str, handler: Run) -> Result<Value> {
+    if s.param_check == ParamCheck::Off && !record::enabled() {
+        return handler(s, p);
+    }
+    match crate::cmd::find_command(id).and_then(|c| c.contract) {
+        Some(contract) => run_checked(s, p, id, contract, handler),
+        None => handler(s, p),
+    }
 }
 
 /// Run `handler` as the command `id`, checking the call against `contract` as the session's

@@ -175,7 +175,7 @@ pub fn sync(s: &mut Session) -> Result<()> {
         };
         link.offset = 0.;
     }
-    doc.metadata.set(KEY, json!({"type":"kue-first-stage/1","report":report}))?;
+    doc.metadata.set(solidcraft_doc::metadata::Owner::Design, KEY, json!({"type":"kue-first-stage/1","report":report}))?;
     Ok(())
 }
 
@@ -186,8 +186,8 @@ fn create(s: &mut Session, _: &Value) -> Result<Value> {
     let mut next = s.scratch();
     next.execute("worksheet.describe",&json!({"title":"KUE - Planetenstufe und Gesamtgetriebeberechnung","notes":"Variante 1..4 waehlt die Angabe und Aufbauart. Erste Stufe: analytische Evolvente, native Baugruppe. Zahnfuss-Vorauslegung und Bolzenmodell, keine ISO-6336-/Lagerfreigabe."}))?;
     for n in 1..=4 {
-        let source = SOURCE.replacen("Variante = 1", &format!("Variante = {n}"), 1)
-            .replacen("Aufbauvariante = 1", &format!("Aufbauvariante = {n}"), 1);
+        let source =
+            SOURCE.replacen("Variante = 1", &format!("Variante = {n}"), 1).replacen("Aufbauvariante = 1", &format!("Aufbauvariante = {n}"), 1);
         next.execute("worksheet.calcpad.calculate", &json!({"source":source}))?;
         next.execute("worksheet.variant.save", &json!({"name":format!("KUE Variante {n}")}))?;
     }
@@ -207,9 +207,7 @@ fn create(s: &mut Session, _: &Value) -> Result<Value> {
     gear(&mut next, "Sun gear", "ref_z_s", json!([0, 0, 0]), "0 deg".into(), "ref_bore_s", false)?;
     next.execute("appearance.assign", &json!({"bodies":["Sun gear"],"color":"#ed862e"}))?;
     component(&mut next, "Carrier")?;
-    let cyl = |s: &mut Session, name: &str, r: &str, h: &str, base: Value| {
-        round_extrusion(s, name, r, h, &base, None)
-    };
+    let cyl = |s: &mut Session, name: &str, r: &str, h: &str, base: Value| round_extrusion(s, name, r, h, &base, None);
     cyl(&mut next, "Carrier rear", "ref_a+ref_pin_r+ref_modul", "ref_Platte", json!([0, 0, "-ref_Spiel_axial-ref_Platte"]))?;
     cyl(&mut next, "Carrier front", "ref_a+ref_pin_r+ref_modul", "ref_Platte", json!([0, 0, "ref_b+ref_Spiel_axial"]))?;
     cyl(&mut next, "Carrier hub", "ref_hub_r", "4*ref_modul", json!([0, 0, "-ref_Spiel_axial-ref_Platte-4*ref_modul"]))?;
@@ -274,7 +272,7 @@ fn create(s: &mut Session, _: &Value) -> Result<Value> {
     for k in 1..=3 {
         next.execute("joint.motion_link", &json!({"a":"Input","b":format!("PlanetSpin{k}"),"ratio":-zr/zp}))?;
     }
-    next.doc_mut().metadata.set(KEY, json!({"type":"kue-first-stage/1"}))?;
+    next.doc_mut().metadata.set(solidcraft_doc::metadata::Owner::Design, KEY, json!({"type":"kue-first-stage/1"}))?;
     sync(&mut next)?;
     super::worksheet::commit(s, next)
 }
@@ -291,11 +289,14 @@ fn round_extrusion(s: &mut Session, name: &str, radius: &str, height: &str, base
     s.execute("sketch.create", &json!({"name":format!("Kontur - {name}"),"plane":"XY","offset":z}))?;
     let seed = s.doc.eval(radius, solidcraft_doc::expr::Kind::Length)?;
     let drawn = s.execute("sketch.circle.center", &json!({"center":[x,y],"radius":seed}))?;
-    let circle = drawn["curves"].as_array().and_then(|c| c.first()).cloned().ok_or_else(|| bad("planetary.create", "circle did not return a curve"))?;
+    let circle =
+        drawn["curves"].as_array().and_then(|c| c.first()).cloned().ok_or_else(|| bad("planetary.create", "circle did not return a curve"))?;
     s.execute("sketch.dimension", &json!({"entities":[circle],"type":"radius","value":radius}))?;
     s.execute("sketch.finish", &json!({}))?;
     let mut params = json!({"name":name,"body_name":name,"distance":height,"operation":if targets.is_some() {"cut"} else {"new"}});
-    if let Some(targets) = targets { params["targets"] = targets; }
+    if let Some(targets) = targets {
+        params["targets"] = targets;
+    }
     s.execute("solid.extrude", &params)
 }
 

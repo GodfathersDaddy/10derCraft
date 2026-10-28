@@ -434,40 +434,9 @@ fn revolved(plane: &Plane, regions: &[Region2], axis_origin: Vec2, axis_dir: Vec
         };
         let given = numbered_region(r)?.map_loops(|l| reseam(snap_loop(l).merged_lines(axis_run)));
         let r = &given.region();
-        // A half disc on the axis revolved fully is a sphere: build it without poles. Every
-        // patch is swept from the half disc's arcs.
         if angle.abs() >= std::f64::consts::TAU - 1e-9
             && r.holes.is_empty()
-            && let Some((c, rad)) = half_disc(&r.outer, axis_origin, d)
-        {
-            let arcs: Vec<usize> = r
-                .outer
-                .segs
-                .iter()
-                .enumerate()
-                .filter(|(_, s)| matches!(s, Seg2::Arc { .. }))
-                .flat_map(|(i, _)| given.outer.numbers(i).to_vec())
-                .collect();
-            out.push(sphere_solid(plane.to_world(c), rad, [Vec3::X, Vec3::Y, Vec3::Z], &arcs)?);
-            continue;
-        }
-        // A full turn of a profile that comes back to the axis along a curve (a half slot about
-        // its centreline, a dome at the far end): truck's cone gives the faces
-        // swept from it the wrong region (their pole is at the end of their curve), and cuts with
-        // such a body failed (#1853). It is built as part turns are, a third of a turn at a time.
-        if angle.abs() >= std::f64::consts::TAU - 1e-9
-            && r.holes.is_empty()
-            && pole_at_end(&r.outer, axis_origin, d)
-            && let Some(b) = revolve_on_axis(plane, &given.outer, axis_origin, d, angle)?
-        {
-            out.push(b);
-            continue;
-        }
-        // A full revolution of a profile with one edge on the axis: sweep the rest of the loop
-        // as a cone-like shell (no zero-area faces, which booleans can't handle).
-        if angle.abs() >= std::f64::consts::TAU - 1e-9
-            && r.holes.is_empty()
-            && let Some(b) = revolve_touching_axis(plane, &given.outer, axis_origin, d)?
+            && let Some(b) = full_turn_on_axis(plane, &given.outer, axis_origin, d, angle)?
         {
             out.push(b);
             continue;
@@ -1282,7 +1251,10 @@ fn taper_loop(levels: &[(Plane, &[Option<Seg2>])], numbers: impl Fn(usize) -> Ve
                             sides.push((flat(wire)?, prov.clone()));
                             continue;
                         }
-                        let surface = mt::BSplineSurface::homotopy(e.oriented_curve().lift_up().map_err(|e| KernelError::Invalid(e.to_string()))?, t.oriented_curve().lift_up().map_err(|e| KernelError::Invalid(e.to_string()))?);
+                        let surface = mt::BSplineSurface::homotopy(
+                            e.oriented_curve().lift_up().map_err(|e| KernelError::Invalid(e.to_string()))?,
+                            t.oriented_curve().lift_up().map_err(|e| KernelError::Invalid(e.to_string()))?,
+                        );
                         sides.push((mt::Face::new(vec![wire], mt::Surface::NurbsSurface(mt::NurbsSurface::new(surface))), prov.clone()));
                     }
                 }
@@ -1405,6 +1377,67 @@ fn half_disc(lp: &Loop2, axis_origin: Vec2, d: Vec2) -> Option<(Vec2, f64)> {
     let total: f64 = arcs.iter().map(|a| a.2.abs()).sum();
     let same = arcs.iter().all(|(c2, r2, _)| c2.dist(c) < 1e-7 * (1.0 + r) && (r2 - r).abs() < 1e-7 * (1.0 + r));
     (same && (total - std::f64::consts::PI).abs() < 1e-6).then_some((c, r))
+}
+
+/// A full turn of a loop with edges on the axis, built without the zero-area faces truck sweeps
+/// from them (booleans can't handle those). `None` when no builder here takes the loop.
+fn full_turn_on_axis(plane: &Plane, nl: &NumberedLoop, axis_origin: Vec2, d: Vec2, angle: f64) -> Result<Option<Body>> {
+    let lp = &nl.lp;
+    // A half disc on the axis revolved fully is a sphere: build it without poles. Every
+    // patch is swept from the half disc's arcs.
+    if let Some((c, rad)) = half_disc(lp, axis_origin, d) {
+        let arcs: Vec<usize> =
+            lp.segs.iter().enumerate().filter(|(_, s)| matches!(s, Seg2::Arc { .. })).flat_map(|(i, _)| nl.numbers(i).to_vec()).collect();
+        return sphere_solid(plane.to_world(c), rad, [Vec3::X, Vec3::Y, Vec3::Z], &arcs).map(Some);
+    }
+    // A full turn of a profile that comes back to the axis along a curve (a half slot about
+    // its centreline, a dome at the far end): truck's cone gives the faces
+    // swept from it the wrong region (their pole is at the end of their curve), and cuts with
+    // such a body failed (#1853). It is built as part turns are, a third of a turn at a time.
+    if pole_at_end(lp, axis_origin, d)
+        && let Some(b) = revolve_on_axis(plane, nl, axis_origin, d, angle)?
+    {
+        return Ok(Some(b));
+    }
+    // A full revolution of a profile with one edge on the axis: sweep the rest of the loop
+    // as a cone-like shell (no zero-area faces, which booleans can't handle).
+    if let Some(b) = revolve_touching_axis(plane, nl, axis_origin, d)? {
+        return Ok(Some(b));
+    }
+    // Several edges on the axis (a spherical shell's two radial lines): each run of the loop
+    // from the axis back to it, closed along the axis, turns into a shell of its own, a solid
+    // where it runs the way the loop does and a void where it runs the other way. Swept whole,
+    // the edges on the axis became zero-area faces joining the shells, and a cut through a pole
+    // there failed (#451).
+    let on_axis = |s: &Seg2| matches!(*s, Seg2::Line { a, b } if d.cross(a - axis_origin).abs() < 1e-9 && d.cross(b - axis_origin).abs() < 1e-9);
+    let n = lp.segs.len();
+    let axis_segs: Vec<usize> = (0..n).filter(|i| lp.segs.get(*i).is_some_and(on_axis)).collect();
+    let [k0, _, ..] = axis_segs[..] else { return Ok(None) };
+    let mut parts = Vec::new();
+    for (i, &k) in axis_segs.iter().enumerate() {
+        let run: Vec<usize> = (k + 1..axis_segs.get(i + 1).copied().unwrap_or(k0 + n)).map(|j| j % n).collect();
+        let mut segs: Vec<Seg2> = run.iter().filter_map(|j| lp.segs.get(*j).copied()).collect();
+        let (Some(first), Some(last)) = (segs.first(), segs.last()) else { return Ok(None) };
+        segs.push(Seg2::Line { a: last.end(), b: first.start() });
+        let sub = NumberedLoop { lp: Loop2 { segs }, from: run.iter().map(|j| nl.numbers(*j).to_vec()).chain([Vec::new()]).collect() };
+        let void = sub.lp.is_ccw() != lp.is_ccw();
+        let Some(b) = full_turn_on_axis(plane, &if void { sub.reversed() } else { sub }, axis_origin, d, angle)? else { return Ok(None) };
+        parts.push((b, void));
+    }
+    let faces: Option<Vec<FaceProv>> =
+        parts.iter().map(|(b, _)| b.history().map(|h| h.faces.clone())).collect::<Option<Vec<_>>>().map(|f| f.concat());
+    let solid = guard("revolve", || {
+        let mut shells = Vec::new();
+        for (b, void) in &parts {
+            let mut s = b.solid.as_ref().clone();
+            if *void {
+                s.not();
+            }
+            shells.extend(s.boundaries().iter().cloned());
+        }
+        Solid::try_new(shells).map_err(|e| KernelError::Failed(format!("revolve: {e}")))
+    })?;
+    record::attach(Body::new(solid)?, &[], faces, Default::default()).map(Some)
 }
 
 /// Whether the loop has one edge on the axis and comes back to it along a curve (the segment
@@ -1986,6 +2019,19 @@ fn loft_reversed(sections: &[(Plane, Loop2)]) -> Result<bool> {
 }
 
 fn loft_numbered_wires(sections: &[(Plane, NumberedLoop)], reversed: bool) -> Result<(Vec<mt::Wire>, Vec<Vec<Vec<usize>>>)> {
+    let mut wires: Vec<mt::Wire> = Vec::new();
+    // Per section, the profile segments under each of its wire's edges.
+    let mut edge_sources: Vec<Vec<Vec<usize>>> = Vec::new();
+    for (p, r) in loft_section_loops(sections, reversed)? {
+        wires.push(uniform_wire(&p, &r.lp)?);
+        edge_sources.push(r.from);
+    }
+    Ok((wires, edge_sources))
+}
+
+/// The sections of a loft as the wires are built from them: in loft order, oriented alike,
+/// re-split to the same number of segments and started where they line up best.
+pub(crate) fn loft_section_loops(sections: &[(Plane, NumberedLoop)], reversed: bool) -> Result<Vec<(Plane, NumberedLoop)>> {
     let n = sections.iter().map(|(_, l)| l.lp.segs.len()).max().unwrap_or(0);
     if n == 0 || n > MAX_SEGS {
         return Err(KernelError::Invalid("empty section".into()));
@@ -2000,28 +2046,51 @@ fn loft_numbered_wires(sections: &[(Plane, NumberedLoop)], reversed: bool) -> Re
     // with the most segments.
     let n0 = ordered.first().map(|(p, _)| p.normal()).unwrap_or(Vec3::Z);
     let parallel = ordered.iter().all(|(p, _)| p.normal().dot(n0).abs() > 1.0 - 1e-9);
+    // Whether a section faces the first one's way is followed neighbour to neighbour, not by its
+    // normal against the first's: planes turning about an axis pass 90 degrees and would be
+    // flipped, folding the loft (#2847).
+    let mut facing = true;
+    let mut before = n0;
     let oriented: Vec<(Plane, NumberedLoop)> = ordered
         .iter()
         .map(|(p, l)| {
-            let ccw = p.normal().dot(n0) >= 0.0;
-            (*p, l.oriented(!ccw))
+            let n = p.normal();
+            if n.dot(before) < 0.0 {
+                facing = !facing;
+            }
+            before = n;
+            (*p, l.oriented(!facing))
         })
         .collect();
     let lead = oriented.iter().max_by_key(|(_, l)| l.lp.segs.len()).ok_or_else(|| KernelError::Invalid("no sections".into()))?;
     let lead_c = lead.0.to_world(lead.1.lp.centroid());
     let lead_dirs: Vec<Vec3> = lead.1.lp.segs.iter().map(|s| lead.0.to_world(s.start()) - lead_c).collect();
-    let mut wires: Vec<mt::Wire> = Vec::new();
-    // Per section, the profile segments under each of its wire's edges.
-    let mut edge_sources: Vec<Vec<Vec<usize>>> = Vec::new();
+    // The share of the lead's perimeter before each of its vertices: where a circle section
+    // breaks when the lead's vertex directions do not go round in order.
+    let lead_len: f64 = lead.1.lp.segs.iter().map(Seg2::length).sum();
+    let fractions: Vec<f64> = lead
+        .1
+        .lp
+        .segs
+        .iter()
+        .scan(0.0, |before, s| {
+            let f = *before / lead_len;
+            *before += s.length();
+            Some(f)
+        })
+        .collect();
+    let mut out: Vec<(Plane, NumberedLoop)> = Vec::new();
     for (p, l) in &oriented {
         let c = l.lp.centroid();
         // Break angles: the lead section's vertex directions seen in this plane.
         let angles: Vec<f64> = lead_dirs.iter().map(|d| Vec2::new(d.dot(p.x), d.dot(p.y)).angle()).collect();
-        let mut r = l.resample(n, &angles);
         // Circle resampling creates increasing local angles. An antiparallel sketch
-        // plane must run clockwise locally to keep the same winding in world space.
-        // Curving a run through a right angle does not reverse a section's winding.
-        if parallel && p.normal().dot(n0) < 0.0 {
+        // plane must run clockwise locally to keep the same winding in world space (the lead's
+        // directions go round clockwise there). Curving a run through a right angle does not
+        // reverse a section's winding.
+        let flip = parallel && p.normal().dot(n0) < 0.0;
+        let mut r = l.resample(n, &angles, &fractions, flip);
+        if flip {
             r = r.oriented(true);
         }
         // Start where every vertex lines up best with the lead's vertex of the same number (the
@@ -2036,10 +2105,9 @@ fn loft_numbered_wires(sections: &[(Plane, NumberedLoop)], reversed: bool) -> Re
         if let Some(k) = (0..m).min_by(|a, b| fit(*b).total_cmp(&fit(*a))) {
             r.rotate_left(k);
         }
-        wires.push(uniform_wire(p, &r.lp)?);
-        edge_sources.push(r.from);
+        out.push((*p, r));
     }
-    Ok((wires, edge_sources))
+    Ok(out)
 }
 
 /// Ruled faces between each two neighbouring section wires; each comes from the section edges

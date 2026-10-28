@@ -27,7 +27,7 @@ pub fn save(s: &mut Session, p: &Value) -> Result<Value> {
         items.push(item);
     }
     variants = json!({"active":name,"items":items});
-    s.doc_mut().metadata.set(KEY, variants.clone())?;
+    s.doc_mut().metadata.set(solidcraft_doc::metadata::Owner::Design, KEY, variants.clone())?;
     Ok(variants)
 }
 
@@ -45,6 +45,6 @@ pub fn select(s: &mut Session, p: &Value) -> Result<Value> {
         super::worksheet_calcpad::calculate(&mut next, &json!({"source":source}))?;
     }
     variants["active"] = json!(name);
-    next.doc_mut().metadata.set(KEY, variants)?;
+    next.doc_mut().metadata.set(solidcraft_doc::metadata::Owner::Design, KEY, variants)?;
     super::worksheet::commit(s, next)
 }

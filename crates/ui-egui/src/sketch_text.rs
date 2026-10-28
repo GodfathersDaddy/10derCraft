@@ -14,6 +14,7 @@ use solidcraft_engine::{
 use crate::SolveApp;
 use crate::dialogs::{Dialog, Kind};
 use crate::selection::SelInput;
+use crate::ui_kit;
 
 /// Field rows after the text: position, height (lengths), angle, letter spacing (a length) and
 /// line spacing (a factor).
@@ -82,7 +83,7 @@ pub(crate) fn entity_for_selection(app: &SolveApp, selection: &Sel) -> Option<St
     let state = app.session.world_state();
     let ss = state.sketch(sid)?;
     let ids = match selection {
-        Sel::SketchCurve { id } => vec![id.clone()],
+        Sel::SketchCurve { id, .. } => vec![id.clone()],
         Sel::Profile { sketch, index } if *sketch == sid => ss.profiles.get(*index)?.curve_ids(),
         // A point of a letter's outline stands for its text (a double-click often lands on one).
         Sel::SketchPoint { id } => {
@@ -196,7 +197,11 @@ pub(crate) fn selected_link(app: &SolveApp) -> Option<String> {
 pub(crate) fn highlighted(app: &SolveApp) -> Vec<Sel> {
     let Some(Kind::Text(tx)) = app.dialog.as_ref().map(|dialog| &dialog.kind) else { return Vec::new() };
     let Ok(sk) = app.session.doc.sketch(tx.sketch) else { return Vec::new() };
-    sk.curves.iter().filter(|curve| curve.link.as_deref() == Some(tx.link.as_str())).map(|curve| Sel::SketchCurve { id: curve.id.clone() }).collect()
+    sk.curves
+        .iter()
+        .filter(|curve| curve.link.as_deref() == Some(tx.link.as_str()))
+        .map(|curve| Sel::SketchCurve { id: curve.id.clone(), sketch: None })
+        .collect()
 }
 
 /// A value shown in a field: rounded so binary noise does not show, with its unit.
@@ -247,7 +252,7 @@ fn dialog(tx: Box<Tx>) -> Dialog {
 
 fn inputs_for(tx: &Tx) -> Vec<SelInput> {
     let mut path = SelInput::new("Path", crate::selection::CURVES, false);
-    path.items.extend(tx.style.path.iter().map(|id| Sel::SketchCurve { id: id.clone() }));
+    path.items.extend(tx.style.path.iter().map(|id| Sel::SketchCurve { id: id.clone(), sketch: None }));
     vec![path]
 }
 
@@ -255,7 +260,7 @@ fn inputs_for(tx: &Tx) -> Vec<SelInput> {
 pub(crate) fn sync_path(d: &mut Dialog) {
     let Kind::Text(k) = &mut d.kind else { return };
     let picked = d.inputs.first().and_then(|i| i.items.first()).and_then(|sel| match sel {
-        Sel::SketchCurve { id } => Some(id.clone()),
+        Sel::SketchCurve { id, .. } => Some(id.clone()),
         _ => None,
     });
     if picked != k.style.path {
@@ -361,21 +366,32 @@ fn folded<T>(app: &mut SolveApp, k: &mut Tx, run: impl FnOnce(&mut SolveApp) -> 
 
 /// Each frame: show the fields on the canvas (a live edit) when they changed. Fields that make
 /// no text (an empty one, a half-typed value) leave the last good preview.
-pub(crate) fn preview(app: &mut SolveApp, k: &mut Tx) {
-    let Ok(params) = edit_params(app, k) else { return };
+/// A changed preview returns its result for the dialog's error row; unchanged fields keep it.
+pub(crate) fn preview(app: &mut SolveApp, k: &mut Tx) -> Option<Result<(), String>> {
+    let Ok(params) = edit_params(app, k) else { return None };
     if k.tried.as_ref() == Some(&params) {
-        return;
+        return None;
     }
     k.tried = Some(params.clone());
     if k.start.is_none() {
-        let Some(checkpoint) = app.session.execute("edit.checkpoint", &json!({})).ok().and_then(|r| r["checkpoint"].as_u64()) else { return };
+        let checkpoint = match app.session.execute("edit.checkpoint", &json!({})) {
+            Ok(result) => match result.get("checkpoint").and_then(Value::as_u64) {
+                Some(checkpoint) => checkpoint,
+                None => return Some(Err("the text preview could not create a checkpoint".into())),
+            },
+            Err(error) => return Some(Err(error.to_string())),
+        };
         k.start = Some(checkpoint);
     }
     let mut live = params;
     live["live"] = json!(true);
-    if folded(app, k, |app| app.session.execute("sketch.edit_text", &live)).is_ok() {
-        k.shown = source(app, k.sketch, &k.link);
-    }
+    Some(
+        folded(app, k, |app| app.session.execute("sketch.edit_text", &live))
+            .map(|_| {
+                k.shown = source(app, k.sketch, &k.link);
+            })
+            .map_err(|error| error.to_string()),
+    )
 }
 
 /// OK: the fields' final edit (which also brings the features after the sketch up to date), in
@@ -448,13 +464,11 @@ pub(crate) fn refresh(app: &SolveApp, k: &mut Tx) -> bool {
 /// starts a new line there). `inputs` and `active`: the dialog's Path input.
 pub(crate) fn rows(ui: &mut egui::Ui, k: &mut Tx, inputs: &mut [SelInput], active: &mut usize) -> bool {
     let mut enter = false;
-    crate::dialogs::row_label(ui, "Text");
-    let width = ui.spacing().text_edit_width;
     let id = egui::Id::new("sketch_text_content");
     if ui.memory(|m| m.has_focus(id)) {
         enter |= ui.input_mut(|i| !i.modifiers.shift && i.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
     }
-    let response = ui.add(egui::TextEdit::multiline(&mut k.text).id(id).desired_rows(3).desired_width(width));
+    let response = ui_kit::multiline_text_field(ui, "Text", id, &mut k.text);
     crate::scenario::publish_handle("dialog:Text", response.rect.center());
     if k.focus {
         response.request_focus();
@@ -464,42 +478,44 @@ pub(crate) fn rows(ui: &mut egui::Ui, k: &mut Tx, inputs: &mut [SelInput], activ
         state.store(ui.ctx(), id);
         k.focus = false;
     }
-    ui.end_row();
-    crate::dialogs::row_label(ui, "Font");
-    font_row(ui, k, width);
-    ui.end_row();
-    crate::dialogs::row_label(ui, "Style");
-    ui.horizontal(|ui| {
-        let bold = ui.toggle_value(&mut k.style.bold, egui::RichText::new("B").strong()).on_hover_text(crate::i18n::tr("sketch_text.bold"));
-        crate::scenario::publish_handle("dialog:Bold", bold.rect.center());
-        let italic = ui.toggle_value(&mut k.style.italic, egui::RichText::new("I").italics()).on_hover_text(crate::i18n::tr("sketch_text.italic"));
-        crate::scenario::publish_handle("dialog:Italic", italic.rect.center());
-    });
-    ui.end_row();
-    crate::dialogs::row_label(ui, "Alignment");
-    ui.horizontal(|ui| {
-        for (align, id, handle) in [
-            (TextAlign::Left, "sketch_text.align_left", "dialog:Align left"),
-            (TextAlign::Center, "sketch_text.align_center", "dialog:Align center"),
-            (TextAlign::Right, "sketch_text.align_right", "dialog:Align right"),
-        ] {
-            let response = ui.selectable_value(&mut k.style.align, align, crate::i18n::tr(id));
-            crate::scenario::publish_handle(handle, response.rect.center());
+    ui_kit::row(ui, "Font", |ui| font_row(ui, k));
+    ui_kit::row(ui, "Style", |ui| ui_kit::text_emphasis(ui, &mut k.style.bold, &mut k.style.italic));
+    ui_kit::row(ui, "Alignment", |ui| {
+        let mut selected = match k.style.align {
+            TextAlign::Left => 0,
+            TextAlign::Center => 1,
+            TextAlign::Right => 2,
+        };
+        let labels = ["sketch_text.align_left", "sketch_text.align_center", "sketch_text.align_right"].map(crate::i18n::tr);
+        ui_kit::segmented(ui, &mut selected, &labels, ui_kit::Segments { compact: true, ..Default::default() });
+        k.style.align = match selected {
+            1 => TextAlign::Center,
+            2 => TextAlign::Right,
+            _ => TextAlign::Left,
+        };
+        for (label, handle) in labels.iter().zip(["dialog:Align left", "dialog:Align center", "dialog:Align right"]) {
+            if let Some(at) = crate::scenario::handle_at(&format!("dialog:Alignment:{label}")) {
+                crate::scenario::publish_handle(handle, at);
+            }
         }
     });
-    ui.end_row();
     // On a path the curve places the text: X, Y and the angle do not.
     let on_path = k.style.path.is_some();
-    for (i, (label, value)) in LABELS.iter().zip(k.values.iter_mut()).enumerate() {
-        crate::dialogs::row_label(ui, label);
-        let placed = on_path && matches!(i, 0 | 1 | ANGLE);
-        if placed {
-            let response = ui.add_enabled_ui(false, |ui| crate::dialogs::field(ui, value));
+    let (xy, rest) = k.values.split_at_mut(2);
+    if let [x, y] = xy {
+        let response = ui.add_enabled_ui(!on_path, |ui| ui_kit::value_pair(ui, "Position", [x, y], ["X", "Y"], None));
+        enter |= response.inner;
+        if on_path {
             response.response.on_disabled_hover_text(crate::i18n::tr("sketch_text.on_path"));
-        } else {
-            enter |= crate::dialogs::field(ui, value);
         }
-        ui.end_row();
+    }
+    for (i, (label, value)) in LABELS.iter().skip(2).zip(rest).enumerate() {
+        let index = i + 2;
+        let response = ui.add_enabled_ui(!(on_path && index == ANGLE), |ui| ui_kit::row(ui, label, |ui| ui_kit::field(ui, value)));
+        enter |= response.inner;
+        if on_path && index == ANGLE {
+            response.response.on_disabled_hover_text(crate::i18n::tr("sketch_text.on_path"));
+        }
     }
     path_row(ui, k, inputs, active);
     enter
@@ -508,25 +524,21 @@ pub(crate) fn rows(ui: &mut egui::Ui, k: &mut Tx, inputs: &mut [SelInput], activ
 /// The curve the text follows: a chip that, clicked, takes the next curve clicked on the canvas;
 /// × takes the text off it; Reverse runs it the other way along.
 fn path_row(ui: &mut egui::Ui, k: &mut Tx, inputs: &mut [SelInput], active: &mut usize) {
-    let t = crate::theme::Tokens::get();
-    crate::dialogs::row_label(ui, "Path");
-    ui.horizontal(|ui| {
+    ui_kit::row(ui, "Path", |ui| {
         let on = k.style.path.is_some();
-        let text = if on {
-            egui::RichText::new(crate::i18n::format("dialog.selected_count", &[("count", "1")])).color(egui::Color32::WHITE)
-        } else {
-            egui::RichText::new(crate::i18n::tr("dialog.select")).color(t.text)
-        };
-        let stroke = if k.picking { egui::Stroke::new(1.5, t.accent) } else { egui::Stroke::new(1.0, t.dialog_border.gamma_multiply(1.6)) };
-        let chip = egui::Button::new(text).fill(if on { t.chip } else { egui::Color32::TRANSPARENT }).stroke(stroke).min_size(egui::vec2(0.0, 22.0));
-        let chip = crate::frame::add_outlined(ui, chip, stroke.width).on_hover_text(crate::i18n::tr("sketch_text.path_hint"));
+        let text = if on { crate::i18n::format("dialog.selected_count", &[("count", "1")]) } else { crate::i18n::tr("dialog.select").into() };
+        let chip = ui_kit::selection_field(ui, &text, ui_kit::Selection { active: k.picking, filled: on })
+            .on_hover_text(crate::i18n::tr("sketch_text.path_hint"));
+        let chip_rect = chip.rect;
         crate::scenario::publish_handle("dialog:Path", chip.rect.center());
         if chip.clicked() {
             k.picking = true;
             *active = 0;
         }
         if on {
-            let clear = ui.small_button("\u{d7}").on_hover_text(crate::i18n::tr("sketch_text.path_clear"));
+            let size = crate::theme::Tokens::get().space_24;
+            let rect = egui::Rect::from_center_size(egui::pos2(chip_rect.right() - size / 2.0, chip_rect.center().y), egui::vec2(size, size));
+            let clear = ui_kit::icon_button_at(ui, rect, "close", "sketch_text.path_clear");
             crate::scenario::publish_handle("dialog:Path clear", clear.rect.center());
             if clear.clicked() {
                 for input in inputs.iter_mut() {
@@ -537,12 +549,11 @@ fn path_row(ui: &mut egui::Ui, k: &mut Tx, inputs: &mut [SelInput], active: &mut
             }
         }
     });
-    ui.end_row();
     if k.style.path.is_some() {
-        crate::dialogs::row_label(ui, "Reverse");
-        let reverse = ui.checkbox(&mut k.style.reverse, "");
-        crate::scenario::publish_handle("dialog:Reverse", reverse.rect.center());
-        ui.end_row();
+        ui_kit::section(ui, "path_options", "Options", true, |ui| {
+            let reverse = ui_kit::checkbox(ui, crate::i18n::tr_label("Reverse"), &mut k.style.reverse);
+            crate::scenario::publish_handle("dialog:Reverse", reverse.rect.center());
+        });
     }
 }
 
@@ -578,70 +589,25 @@ fn is_font_file(s: &str) -> bool {
     lower.contains(['/', '\\']) || [".ttf", ".otf", ".ttc", ".otc"].iter().any(|e| lower.ends_with(e))
 }
 
-/// Height of the font list (points).
-const FONT_LIST_PX: f32 = 260.0;
-
-/// The font: a list of the installed families (the built-in font first) with a search box; a
-/// font file's path typed there can be used too.
-fn font_row(ui: &mut egui::Ui, k: &mut Tx, width: f32) {
+/// The application supplies families/file recognition; the kit owns search and list widgets.
+fn font_row(ui: &mut egui::Ui, k: &mut Tx) {
     let builtin = crate::i18n::format("sketch_text.builtin_font", &[("family", solidcraft_engine::sketch::DEFAULT_FONT_FAMILY)]);
     let current = if k.font.trim().is_empty() { builtin.clone() } else { k.font.clone() };
-    let mut chosen = None;
-    let response = egui::ComboBox::from_id_salt("sketch_text_font")
-        .width(width)
-        .height(FONT_LIST_PX + 80.0)
-        .selected_text(current)
-        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-        .show_ui(ui, |ui| {
-            let search = egui::TextEdit::singleline(&mut k.font_filter)
-                .id_salt("sketch_text_font_search")
-                .hint_text(crate::i18n::tr("sketch_text.font_search"));
-            let search = ui.add(search.desired_width(f32::INFINITY));
-            crate::scenario::publish_handle("dialog:Font search", search.rect.center());
-            let typed = k.font_filter.trim();
-            if is_font_file(typed) {
-                let file = ui.selectable_label(false, crate::i18n::format("sketch_text.use_font_file", &[("path", typed)]));
-                crate::scenario::publish_handle("dialog:Font file", file.rect.center());
-                if file.clicked() {
-                    chosen = Some(typed.to_string());
-                    ui.close();
-                }
-                return;
-            }
-            let filter = typed.to_lowercase();
-            // The list scrolls below the search box, at one height whatever it holds.
-            let list = egui::ScrollArea::vertical()
-                .id_salt("sketch_text_font_list")
-                .max_height(FONT_LIST_PX)
-                .min_scrolled_height(FONT_LIST_PX)
-                .auto_shrink([false, false]);
-            list.show(ui, |ui| {
-                if builtin.to_lowercase().contains(&filter) {
-                    let item = ui.selectable_label(k.font.trim().is_empty(), &builtin);
-                    crate::scenario::publish_handle("dialog:Font built-in", item.rect.center());
-                    if item.clicked() {
-                        chosen = Some(String::new());
-                        ui.close();
-                    }
-                }
-                match families(ui.ctx()) {
-                    None => {
-                        ui.label(crate::i18n::tr("sketch_text.loading_fonts"));
-                    }
-                    Some(list) => {
-                        for family in list.iter().filter(|f| f.to_lowercase().contains(&filter)) {
-                            if ui.selectable_label(k.font.trim() == family, family).clicked() {
-                                chosen = Some(family.clone());
-                                ui.close();
-                            }
-                        }
-                    }
-                }
-            });
-        })
-        .response;
-    crate::scenario::publish_handle("dialog:Font", response.rect.center());
-    if let Some(font) = chosen {
+    let families = families(ui.ctx());
+    let mut options = vec![ui_kit::SearchOption { value: "", label: &builtin, handle: Some("dialog:Font built-in") }];
+    if let Some(list) = &families {
+        options.extend(list.iter().map(|family| ui_kit::SearchOption { value: family, label: family, handle: None }));
+    }
+    let custom = is_font_file(&k.font_filter).then(|| crate::i18n::format("sketch_text.use_font_file", &[("path", k.font_filter.trim())]));
+    if let Some(font) = ui_kit::searchable_dropdown(
+        ui,
+        "sketch_text_font",
+        &current,
+        &mut k.font_filter,
+        &options,
+        custom.as_deref(),
+        families.is_none().then(|| crate::i18n::tr("sketch_text.loading_fonts")),
+    ) {
         k.font = font;
         k.font_filter.clear();
     }
@@ -670,7 +636,7 @@ fn edit_params(app: &SolveApp, k: &Tx) -> Result<Value, String> {
         *slot = if value == initial {
             *original
         } else {
-            let typed = doc.with_design_unit(value.trim(), *kind);
+            let typed = crate::length_input::expression(doc, value, *kind);
             let v = doc.eval(&typed, *kind).map_err(|e| format!("{label}: {e}"))?;
             if !v.is_finite() {
                 return Err(format!("{label}: not a finite number"));
@@ -714,13 +680,7 @@ mod tests {
     use crate::scenario::Harness;
 
     fn setup() -> (Harness, String, String) {
-        let mut h = Harness::new();
-        h.app.home.open = false;
-        h.app.run("sketch.create", json!({"plane":"XY"})).unwrap();
-        let result = h.app.run("sketch.text", json!({"text":"I","at":[0,0],"height":10})).unwrap();
-        let link = result["link"].as_str().unwrap().to_owned();
-        let curve = result["curves"][0].as_str().unwrap().to_owned();
-        h.app.session.selection = vec![Sel::SketchCurve { id: curve.clone() }];
+        let (mut h, link, curve) = crate::test_support::selected_text("I", [0, 0]);
         h.frames(3);
         (h, link, curve)
     }
@@ -755,7 +715,7 @@ mod tests {
         assert_eq!(tx(&h.app).link, link);
         let sk = h.app.session.doc.sketch(sid).unwrap();
         for curve in sk.curves.iter().filter(|curve| curve.link.as_deref() == Some(&link)) {
-            assert!(h.app.highlighted().contains(&Sel::SketchCurve { id: curve.id.clone() }));
+            assert!(h.app.highlighted().contains(&Sel::SketchCurve { id: curve.id.clone(), sketch: None }));
         }
         h.step(&json!({"widget":"Cancel"})).unwrap();
         assert!(highlighted(&h.app).is_empty());
@@ -777,7 +737,7 @@ mod tests {
         let before = outline(&h);
         assert!(before.len() > 4 && before.iter().all(|(_, l)| l.as_deref() == Some(link.as_str())));
         let profiles = h.app.session.world_state().sketch(sid).unwrap().profiles.len();
-        h.app.session.selection = vec![Sel::SketchCurve { id: before[0].0.clone() }];
+        h.app.session.selection = vec![Sel::SketchCurve { id: before[0].0.clone(), sketch: None }];
         let undo = h.app.session.undo.len();
         let item = crate::context_menu::items(&h.app, &crate::context_menu::Target::Viewport)
             .into_iter()
@@ -915,7 +875,7 @@ mod tests {
             h.app.session.doc.sketch(sid).unwrap().link(&link).unwrap().source,
             LinkSource::Text { text: "O".into(), at, height, angle, font: None, style: TextStyle::default(), exprs: Default::default() }
         );
-        h.app.session.selection = vec![Sel::SketchCurve { id: h.app.session.doc.sketch(sid).unwrap().curves[0].id.clone() }];
+        h.app.session.selection = vec![Sel::SketchCurve { id: h.app.session.doc.sketch(sid).unwrap().curves[0].id.clone(), sketch: None }];
         h.app.start("sketch.edit_text");
         h.frames(3);
         let undo = h.app.session.undo.len();
@@ -943,7 +903,7 @@ mod tests {
         let reopen = |h: &mut Harness| {
             let sid = h.app.session.active_sketch.unwrap();
             let id = h.app.session.doc.sketch(sid).unwrap().curves[0].id.clone();
-            h.app.session.selection = vec![Sel::SketchCurve { id }];
+            h.app.session.selection = vec![Sel::SketchCurve { id, sketch: None }];
             h.app.start("sketch.edit_text");
             h.frames(3);
         };
@@ -965,12 +925,13 @@ mod tests {
             h.step(&json!({"click":{"handle":"dialog:Font file"}})).unwrap();
             h.frames(3);
         };
-        // A font that is not there shows nothing new, keeps the dialog open with the reason at OK, and the design
+        // A font that is not there shows nothing new, reports the reason before OK, and keeps the design
         // as it was.
         let before = (h.app.session.doc.to_json(), h.app.session.undo.len());
         let missing = concat!(env!("CARGO_MANIFEST_DIR"), "/no-such-font-12345.ttf");
         choose_file(&mut h, missing);
         assert_eq!(tx(&h.app).font, missing);
+        assert!(h.app.dialog.as_ref().unwrap().error.as_ref().is_some_and(|error| error.contains("font file")));
         assert_eq!((h.app.session.doc.to_json(), h.app.session.undo.len()), before);
         ok(&mut h);
         assert!(editing(&h.app));
@@ -979,6 +940,7 @@ mod tests {
         // A font file: other outlines on the canvas at once, one undo step, and the dialog shows the font when it is
         // opened again.
         choose_file(&mut h, font);
+        assert!(h.app.dialog.as_ref().unwrap().error.is_none(), "a valid font clears the preview error");
         assert!((area(&h) - 17.6385).abs() < 2e-3, "the canvas follows the font");
         ok(&mut h);
         assert!(!editing(&h.app));
@@ -1030,10 +992,10 @@ mod tests {
     fn text_editor_rejects_mixed_sources_and_leaves_with_document_or_command() {
         let (mut h, _, curve) = setup();
         let other = h.app.run("sketch.text", json!({"text":"O","at":[30,0],"height":10})).unwrap();
-        h.app.session.selection.push(Sel::SketchCurve { id: other["curves"][0].as_str().unwrap().into() });
+        h.app.session.selection.push(Sel::SketchCurve { id: other["curves"][0].as_str().unwrap().into(), sketch: None });
         assert!(selected_entity(&h.app).is_none());
         assert!(!crate::context_menu::items(&h.app, &crate::context_menu::Target::Viewport).iter().any(|item| item.id == "sketch.edit_text"));
-        h.app.session.selection = vec![Sel::SketchCurve { id: curve }];
+        h.app.session.selection = vec![Sel::SketchCurve { id: curve, sketch: None }];
         h.app.start("sketch.edit_text");
         assert!(editing(&h.app));
         h.app.start("sketch.line");
@@ -1099,7 +1061,7 @@ mod tests {
         let sid = h.app.session.active_sketch.unwrap();
         let sk = h.app.session.doc.sketch(sid).unwrap();
         let id = sk.curves[sk.link_curves(link)[0]].id.clone();
-        h.app.session.selection = vec![Sel::SketchCurve { id }];
+        h.app.session.selection = vec![Sel::SketchCurve { id, sketch: None }];
         h.frames(3);
     }
 
@@ -1462,7 +1424,7 @@ mod tests {
         assert_eq!(h.app.session.undo.len(), undo + 1);
         // Reopened, the dialog shows them.
         let sid = h.app.session.active_sketch.unwrap();
-        h.app.session.selection = vec![Sel::SketchCurve { id: h.app.session.doc.sketch(sid).unwrap().curves[0].id.clone() }];
+        h.app.session.selection = vec![Sel::SketchCurve { id: h.app.session.doc.sketch(sid).unwrap().curves[0].id.clone(), sketch: None }];
         h.app.start("sketch.edit_text");
         h.frames(3);
         assert_eq!(tx(&h.app).style, live);
@@ -1479,6 +1441,15 @@ mod tests {
         h.step(&json!({"click":{"handle":"dialog:Bold"}})).unwrap();
         h.frames(2);
         assert!(!style_of(&h, &link).bold, "the canvas keeps the last text it could make");
+        let error = h.app.dialog.as_ref().unwrap().error.clone().unwrap_or_default();
+        assert!(error.contains("no bold face"), "the preview must explain the unchanged text before OK: {error}");
+        h.frames(2);
+        assert_eq!(h.app.dialog.as_ref().unwrap().error.as_deref(), Some(error.as_str()), "the reason stays visible on unchanged frames");
+        h.step(&json!({"click":{"handle":"dialog:Bold"}})).unwrap();
+        h.frames(2);
+        assert!(h.app.dialog.as_ref().unwrap().error.is_none(), "a valid preview clears the refusal");
+        h.step(&json!({"click":{"handle":"dialog:Bold"}})).unwrap();
+        h.frames(2);
         ok(&mut h);
         assert!(editing(&h.app));
         let error = h.app.dialog.as_ref().unwrap().error.clone().unwrap_or_default();
@@ -1495,7 +1466,7 @@ mod tests {
         h.app.cam.distance = 120.0;
         h.frames(3);
         let sid = h.app.session.active_sketch.unwrap();
-        h.app.session.selection = vec![Sel::SketchCurve { id: curve }];
+        h.app.session.selection = vec![Sel::SketchCurve { id: curve, sketch: None }];
         h.app.start("sketch.edit_text");
         h.frames(3);
         assert_eq!(style_of(&h, &link).path, None, "the selected text is not its own path");

@@ -191,7 +191,7 @@ fn each_installation_gets_its_own_file() {
         InstallKind::Snap { store: false }.update_command(Some("solidcraft-linux-x86_64.snap")).as_deref(),
         Some("sudo snap install --dangerous ./solidcraft-linux-x86_64.snap")
     );
-    assert_eq!(InstallKind::Flatpak(APP_ID.into()).update_command(None).as_deref(), Some("flatpak update ai.storyteller.solidcraft"));
+    assert_eq!(InstallKind::Flatpak(APP_ID.into()).update_command(None).as_deref(), Some("flatpak update io.tangencylabs.solidcraft"));
     assert_eq!(
         InstallKind::Deb.update_command(Some("solidcraft-linux-x86_64.deb")).as_deref(),
         Some("sudo apt install ./solidcraft-linux-x86_64.deb")
@@ -369,12 +369,13 @@ fn the_title_bar_offers_the_new_version_and_opens_the_update_window() {
     h.frame();
     wait_for_check(&mut h);
     h.frames(2);
-    // An accent pill reading "Update to <version>", just left of Report a bug, on the bar.
+    // An accent pill reading "Update to <version>", left of the Settings/Help/Report cluster.
     let label = format!("Update to {version}");
     let at = h.widget(&label).unwrap_or_else(|| panic!("no `{label}` in the title bar"));
     let pill = crate::scenario::rect_of("titlebar:update").unwrap();
     assert!(pill.contains(egui::pos2(at[0] as f32, at[1] as f32)));
-    assert!(pill.right() <= report.left() && report.left() - pill.right() < 12.0, "beside Report a bug: {pill:?} {report:?}");
+    let assistant = crate::scenario::rect_of("titlebar:assistant").unwrap();
+    assert!(pill.right() < assistant.left() && assistant.left() - pill.right() < 12.0, "beside Assistant: {pill:?} {assistant:?}");
     assert!((pill.center().y - report.center().y).abs() < 1.0 && pill.height() <= report.height());
     assert_eq!(crate::scenario::rect_of("titlebar:report"), Some(report), "Report a bug stays where it was");
     assert!(!h.app.updater.open, "no window pops up by itself");
@@ -419,7 +420,7 @@ fn the_pill_shortens_in_a_narrow_title_bar() {
             last = p.width();
         }
         shortened |= pill.is_none_or(|p| p.width() < wide.width());
-        if width == 800.0 {
+        if width == 1000.0 {
             assert!(h.widget("Update").is_some() && h.widget(&label).is_none(), "the short label keeps room for the tabs");
         }
     }
@@ -515,4 +516,33 @@ fn releases_under_either_owner_are_accepted() {
     assert!(!is_release_url("http://github.com/tangency-labs/solidcraft/releases/x"));
     assert!(!is_release_url("https://github.com.evil.example/tangency-labs/solidcraft/releases/x"));
     assert!(!is_release_url("https://github.com/tangency-labs/solidcraft/issues/1"));
+}
+
+#[test]
+fn the_version_links_to_its_release_notes() {
+    // A release build opens the page of its own release; stable, candidate and nightly tags all exist.
+    for v in ["0.17.0", "0.21.0-rc.2", "0.20.0-nightly.20261023.69.1"] {
+        assert_eq!(release_notes_url(v, true), format!("https://github.com/tangency-labs/solidcraft/releases/tag/v{v}"));
+    }
+    // A development build has no release of its own: the release history, which is what the issue asks for.
+    assert_eq!(release_notes_url("0.17.0", false), "https://github.com/tangency-labs/solidcraft/releases");
+    // Anything that is not a version never ends up in a URL.
+    assert_eq!(release_notes_url("0.1/../../x", true), "https://github.com/tangency-labs/solidcraft/releases");
+}
+
+#[test]
+fn web_preferences_explain_reload_without_update_controls() {
+    let mut h = crate::scenario::Harness::new();
+    h.app.updater.kind = Some(InstallKind::Web);
+    let mut texts = Vec::new();
+    for _ in 0..2 {
+        let mut output = h.ctx.run_ui(egui::RawInput::default(), |ui| prefs_rows(&mut h.app, ui));
+        output.textures_delta.clear();
+        texts =
+            output.shapes.iter().filter_map(|s| if let egui::Shape::Text(t) = &s.shape { Some(t.galley.text().to_string()) } else { None }).collect();
+    }
+    assert!(!texts.iter().any(|t| t.contains("development build")), "{texts:?}");
+    assert!(!texts.iter().any(|t| t == crate::i18n::tr("update.check_automatically")), "{texts:?}");
+    assert!(!texts.iter().any(|t| t == crate::i18n::tr("update.check_now")), "{texts:?}");
+    assert!(texts.iter().any(|t| t == crate::i18n::tr("update.prefs_web")), "{texts:?}");
 }

@@ -73,14 +73,10 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context, sample: usize, open: &mut b
             },
         },
     };
-    crate::frame::window(ctx, "3D-Dynamikergebnis", crate::frame::Width::Wide)
-        .id(key.with("window"))
-        .open(open)
-        .default_width(650.)
-        .pivot(egui::Align2::LEFT_TOP)
-        .default_pos(ctx.content_rect().min + egui::vec2(30., 170.))
-        .constrain_to(ctx.content_rect().shrink(8.))
-        .show(ctx, |ui| {
+    let closed = crate::ui_kit::Window::new(key.with("window"), "graph", "3D-Dynamikergebnis")
+        .cards(2.5)
+        .placed(egui::Align2::LEFT_TOP, ctx.content_rect().min + egui::vec2(30., 170.))
+        .show_body(ctx, |ui| {
             ui.label("Berechnete CAD-Körper und Kraftschnittstellen · reine Ergebnisansicht");
             ui.small(format!("Ausgabepunkt {sample}. Navigation wie im CAD; die Konstruktion und ihre Gelenke bleiben unverändert."));
             if !cache.error.is_empty() {
@@ -149,5 +145,8 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context, sample: usize, open: &mut b
                 "Portachsen sind hervorgehoben. Die Anzeige verwendet CAD-Darstellungsnetze; keine neue oder veränderte Konstruktionsgeometrie.",
             );
         });
+    if closed {
+        *open = false;
+    }
     ctx.data_mut(|d| d.insert_temp(key, cache));
 }

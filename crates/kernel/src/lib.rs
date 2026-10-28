@@ -52,7 +52,7 @@ pub mod fuzz;
 mod heal;
 mod helix;
 mod involute;
-pub use involute::{InvoluteGear, involute_gear, involute_geometry, involute_boundary};
+pub use involute::{InvoluteGear, involute_boundary, involute_gear, involute_geometry};
 pub mod history;
 mod iges_in;
 mod iges_out;
@@ -155,6 +155,7 @@ mod tspline;
 #[cfg(test)]
 mod untouched_faces_tests;
 pub mod watch;
+mod whole_face;
 
 pub use blend::{ChamferSide, chamfer, chamfer_sides, fillet, fillet_each, fillet_g2, fillet_g2_corners, fillet_max, fillet_max_each};
 pub use blend_corner::fillet_radii;
@@ -222,6 +223,7 @@ pub use sweep_path::{RailFit, SweepControl, SweepOrientation, sweep_path, sweep_
 pub use topo::{CylinderFace, cylinder_end_at, cylinder_face, cylinder_face_at};
 pub use topo::{TopoCounts, merged_topology, seam_flags};
 pub use tspline::tspline_sheet;
+pub use whole_face::{WholeFace, cut_takes_only_the_face, cut_tool, face_prism, matching_face};
 
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum KernelError {
@@ -274,3 +276,6 @@ pub fn guard<T>(what: &str, f: impl FnOnce() -> Result<T>) -> Result<T> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod trimmed_face_mesh_tests;

@@ -51,7 +51,7 @@ pub fn assembly_result_scene(s: &mut Session, sample: usize, palette: Palette) -
             .map(|c| Rgb((c[0] * 255.).round() as u8, (c[1] * 255.).round() as u8, (c[2] * 255.).round() as u8))
             .unwrap_or(palette.body);
         for edge in &mesh.edges {
-            out.lines.push(SceneLine { points: edge.clone(), color: palette.edge, width: 1., on_top: false });
+            out.lines.push(SceneLine { points: edge.clone(), color: palette.edge, width: 1., alpha: 1., on_top: false });
         }
         out.meshes.push(SceneMesh::solid(Arc::new(mesh), color));
     }
@@ -67,6 +67,7 @@ pub fn assembly_result_scene(s: &mut Session, sample: usize, palette: Palette) -
                 points: vec![origin, origin + axis * length],
                 color: palette.axes.get(i).copied().unwrap_or(palette.edge),
                 width: 2.,
+                alpha: 1.,
                 on_top: true,
             });
         }

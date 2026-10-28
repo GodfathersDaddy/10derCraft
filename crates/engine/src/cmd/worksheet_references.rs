@@ -101,7 +101,7 @@ pub fn reference(s: &mut Session, p: &Value) -> Result<Value> {
         next.execute("parameters.add",&json!({"name":cad,"expression":literal(value)?,"unit":unit,"comment":format!("Calculation reference: {name}; committed by worksheet.apply")}))?;
         rows.push(json!({"source":name,"parameter":cad}));
     }
-    next.doc_mut().metadata.set(KEY, json!({"items":rows}))?;
+    next.doc_mut().metadata.set(solidcraft_doc::metadata::Owner::Design, KEY, json!({"items":rows}))?;
     super::worksheet::commit(s, next)?;
     Ok(state(s))
 }

@@ -271,7 +271,7 @@ fn build(s: &mut Session, p: &Value) -> Result<Value> {
 }
 fn save(s: &mut Session, job: Value, result: Option<Value>) -> Result<Value> {
     let v = json!({"job":job,"result":result});
-    s.doc_mut().metadata.set(KEY, v.clone())?;
+    s.doc_mut().metadata.set(solidcraft_doc::metadata::Owner::Design, KEY, v.clone())?;
     Ok(v)
 }
 fn create(s: &mut Session, p: &Value) -> Result<Value> {

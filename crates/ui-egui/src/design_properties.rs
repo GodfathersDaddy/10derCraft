@@ -3,24 +3,28 @@
 //! the design. OK applies the edited fields through one `document.metadata.set` (one undo step);
 //! Cancel and the close button change nothing. File → Design Properties…, the Browser's
 //! Document Settings, the root component's menu and `ui.start` of `document.metadata` or
-//! `document.metadata.set` open it.
+//! `document.metadata.set` open it. [`show_object`] draws the Properties card (mass, volume, area,
+//! centre of mass, bounding box, counts) of the body or component a menu asked about; both are
+//! `ui_kit::Window` cards.
 
-use egui::RichText;
 use serde_json::{Map, Value};
-use solidcraft_engine::doc::metadata::{DESCRIPTION, WELL_KNOWN};
+use solidcraft_engine::doc::metadata::{DESCRIPTION, Owner, keys};
 
 use crate::SolveApp;
-use crate::theme::Tokens;
+use crate::ui_kit;
 
 /// Longest preview of another tool's value in the list.
 const PREVIEW_CHARS: usize = 80;
+/// Rows of other tools' data shown before the list scrolls.
+const OTHERS_ROWS: f32 = 6.0;
 
 /// What is being typed; the properties themselves live in the document.
 pub struct DesignProperties {
-    /// Each well-known key's text when the window opened, in [`WELL_KNOWN`] order.
-    pub opened: [String; WELL_KNOWN.len()],
+    /// Each of SolidCraft's design properties' text when the window opened, in
+    /// `keys(Owner::Design)` order.
+    pub opened: Vec<String>,
     /// The fields as edited.
-    pub fields: [String; WELL_KNOWN.len()],
+    pub fields: Vec<String>,
     /// The last refusal from `document.metadata.set`.
     pub error: Option<String>,
 }
@@ -28,18 +32,17 @@ pub struct DesignProperties {
 impl DesignProperties {
     pub fn new(app: &SolveApp) -> Self {
         let m = &app.session.doc.metadata;
-        let opened = WELL_KNOWN.map(|k| m.text(k).unwrap_or_default().to_string());
+        let opened: Vec<String> = keys(Owner::Design).map(|k| m.text(k.name).unwrap_or_default().to_string()).collect();
         DesignProperties { fields: opened.clone(), opened, error: None }
     }
 
     /// The fields that differ from what the window opened with, as `document.metadata.set`
     /// takes them (empty text removes the key).
     pub fn changes(&self) -> Map<String, Value> {
-        WELL_KNOWN
-            .iter()
+        keys(Owner::Design)
             .zip(self.opened.iter().zip(&self.fields))
             .filter(|(_, (was, now))| was != now)
-            .map(|(k, (_, now))| (k.to_string(), Value::String(now.clone())))
+            .map(|(k, (_, now))| (k.name.to_string(), Value::String(now.clone())))
             .collect()
     }
 }
@@ -64,18 +67,6 @@ fn apply(app: &mut SolveApp, d: &mut DesignProperties) -> bool {
     }
 }
 
-fn label(key: &str) -> &'static str {
-    match key {
-        "project" => crate::i18n::tr("ui.design_properties.project"),
-        "part_number" => crate::i18n::tr("ui.design_properties.part_number"),
-        "revision" => crate::i18n::tr("ui.design_properties.revision"),
-        "author" => crate::i18n::tr("ui.design_properties.author"),
-        "organization" => crate::i18n::tr("ui.design_properties.organization"),
-        "description" => crate::i18n::tr("ui.design_properties.description"),
-        _ => crate::i18n::tr("ui.design_properties.license"),
-    }
-}
-
 /// A short one-line view of a value another tool keeps.
 fn preview(v: &Value) -> String {
     let text = serde_json::to_string(v).unwrap_or_default();
@@ -85,66 +76,94 @@ fn preview(v: &Value) -> String {
 /// Draw the window when it is open. Called once per frame.
 pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
     let Some(mut d) = app.design_properties.take() else { return };
-    let t = Tokens::get();
-    let mut open = true;
-    let (mut ok, mut cancel) = (false, false);
     let metadata = app.session.doc.metadata.clone();
-    let title = RichText::new(crate::i18n::tr_label("Design Properties")).strong().size(13.0);
-    crate::frame::window(ctx, title, crate::frame::Width::Normal)
-        .id(egui::Id::new("sc_design_properties"))
-        .open(&mut open)
-        .resizable(false)
-        .min_width(420.0)
-        .show(ctx, |ui| {
-            egui::Grid::new("sc_design_properties_grid").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
-                for (i, key) in WELL_KNOWN.iter().enumerate() {
-                    ui.label(label(key));
-                    let Some(field) = d.fields.get_mut(i) else { continue };
-                    ui.vertical(|ui| {
-                        let edit =
-                            if *key == DESCRIPTION { egui::TextEdit::multiline(field).desired_rows(3) } else { egui::TextEdit::singleline(field) };
-                        ui.add(edit.desired_width(280.0));
-                        // Saved by another tool as something other than text: kept unless typed over.
-                        if metadata.get(key).is_some() && metadata.text(key).is_none() && d.opened.get(i).is_some_and(String::is_empty) {
-                            ui.label(RichText::new(crate::i18n::tr("ui.design_properties.not_text")).small().color(t.text_dim));
-                        }
-                    });
-                    ui.end_row();
-                }
-            });
-            ui.add_space(4.0);
-            ui.label(RichText::new(crate::i18n::tr("ui.design_properties.exports")).small().color(t.text_dim));
-            let others: Vec<(&String, &Value)> = metadata.others().collect();
-            if !others.is_empty() {
-                ui.add_space(4.0);
-                egui::CollapsingHeader::new(format!("{} ({})", crate::i18n::tr("ui.design_properties.others"), others.len()))
-                    .id_salt("sc_design_properties_others")
-                    .show(ui, |ui| {
-                        ui.label(RichText::new(crate::i18n::tr("ui.design_properties.others_note")).small().color(t.text_dim));
-                        egui::ScrollArea::vertical().max_height(160.0).show(ui, |ui| {
-                            for (k, v) in others {
-                                ui.label(RichText::new(k).monospace().size(12.0).color(t.text));
-                                ui.label(RichText::new(preview(v)).monospace().small().color(t.text_dim));
-                            }
-                        });
-                    });
+    let title = crate::i18n::tr_label("Design Properties");
+    let (closed, action) = ui_kit::Window::new(egui::Id::new("sc_design_properties"), "settings", title).fields().show(ctx, true, |ui| {
+        for (i, k) in keys(Owner::Design).enumerate() {
+            let (key, label) = (k.name, crate::i18n::tr(k.label));
+            let Some(field) = d.fields.get_mut(i) else { continue };
+            if key == DESCRIPTION {
+                ui_kit::multiline_text_field(ui, label, egui::Id::new(("sc_design_properties", key)), field);
+            } else {
+                ui_kit::row(ui, label, |ui| ui_kit::text_field(ui, field, ""));
             }
-            if let Some(e) = &d.error {
-                ui.label(RichText::new(e).color(t.error));
+            // Saved by another tool as something other than text: kept unless typed over.
+            if metadata.get(key).is_some() && metadata.text(key).is_none() && d.opened.get(i).is_some_and(String::is_empty) {
+                ui_kit::caption(ui, label, crate::i18n::tr("ui.design_properties.not_text"));
             }
-            ui.separator();
-            // OK and Cancel flush right, as in every dialog.
-            ui.horizontal(|ui| {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    cancel = ui.button(crate::i18n::tr("ui.cancel")).clicked();
-                    ok = ui.button(crate::i18n::tr("ui.heading_ok")).clicked();
+        }
+        ui_kit::text(ui, crate::i18n::tr("ui.design_properties.exports"), ui_kit::Text::Note("exports"));
+        let others: Vec<(&String, &Value)> = metadata.others().collect();
+        if !others.is_empty() {
+            let heading = format!("{} ({})", crate::i18n::tr("ui.design_properties.others"), others.len());
+            ui_kit::section(ui, "sc_design_properties_others", &heading, false, |ui| {
+                ui_kit::text(ui, crate::i18n::tr("ui.design_properties.others_note"), ui_kit::Text::Note("others"));
+                egui::ScrollArea::vertical().max_height(ui_kit::row_height() * OTHERS_ROWS).show(ui, |ui| {
+                    for (key, value) in others {
+                        ui_kit::row(ui, key, |ui| ui_kit::text(ui, &preview(value), ui_kit::Text::Cell));
+                    }
                 });
             });
-        });
-    if !open || cancel || (ok && apply(app, &mut d)) {
+        }
+        if let Some(error) = &d.error {
+            ui_kit::text(ui, error, ui_kit::Text::Report("error", true));
+        }
+    });
+    if closed || action == ui_kit::Action::Cancel || (action == ui_kit::Action::Ok && apply(app, &mut d)) {
         return;
     }
     app.design_properties = Some(d);
+}
+
+/// Draw the Properties window of the body or component the menu asked about (mass, volume,
+/// area, centre of mass, bounding box and counts), when it is open. Close dismisses it.
+pub fn show_object(app: &mut SolveApp, ctx: &egui::Context) {
+    let Some((title, v)) = app.menu.props.clone() else { return };
+    let number = |x: &Value, k: &str| x.get(k).and_then(Value::as_f64).unwrap_or(f64::NAN);
+    let mut rows: Vec<(&str, String)> = Vec::new();
+    let total = &v["total"];
+    let bodies = v["bodies"].as_array().cloned().unwrap_or_default();
+    let skipped = total["open_bodies_skipped"].as_u64().unwrap_or(0);
+    if let [b] = bodies.as_slice()
+        && b["closed"] == true
+    {
+        rows.push(("Material", b["material"].as_str().unwrap_or_default().to_string()));
+        rows.push(("Density", format!("{:.3} g/cm³", number(b, "density_g_cm3"))));
+    }
+    if !bodies.is_empty() && skipped == bodies.len() as u64 {
+        rows.push(("", crate::i18n::tr_label("Open surface — no volume").to_string()));
+    } else {
+        rows.push(("Mass", format!("{:.3} g", number(total, "mass_g"))));
+        rows.push(("Volume", crate::prefs::show_mm(app, number(total, "volume_mm3"), 3)));
+    }
+    if skipped > 0 && skipped < bodies.len() as u64 {
+        rows.push(("Open bodies (no volume)", skipped.to_string()));
+    }
+    rows.push(("Area", crate::prefs::show_mm(app, number(total, "area_mm2"), 2)));
+    let geometry = if total.get("center_of_mass").is_some() { Some(total) } else { bodies.first().filter(|_| bodies.len() == 1) };
+    if let Some(b) = geometry {
+        let unit = crate::prefs::unit_scale(&app.session.doc.units).1;
+        if let Some(c) = b["center_of_mass"].as_array() {
+            let c: Vec<String> = c.iter().map(|x| crate::prefs::show_mm_bare(app, x.as_f64().unwrap_or(f64::NAN))).collect();
+            rows.push(("Center of mass", format!("({}) {unit}", c.join(", "))));
+        }
+        let (mn, mx) = (&b["bbox"]["min"], &b["bbox"]["max"]);
+        if let (Some(a), Some(z)) = (mn.as_array(), mx.as_array()) {
+            let d: Vec<String> =
+                a.iter().zip(z).map(|(a, z)| crate::prefs::show_mm_bare(app, z.as_f64().unwrap_or(0.0) - a.as_f64().unwrap_or(0.0))).collect();
+            rows.push(("Bounding box", format!("{} {unit}", d.join(" × "))));
+        }
+    }
+    rows.push(("Faces / edges / vertices", format!("{} / {} / {}", total["faces"], total["edges"], total["vertices"])));
+    let heading = crate::i18n::format("properties.title", &[("name", &title)]);
+    let (closed, action) = ui_kit::Window::new(egui::Id::new("sc_props"), "settings", &heading).actions("", "Close", None).show(ctx, true, |ui| {
+        for (label, value) in &rows {
+            ui_kit::row(ui, crate::i18n::tr_label(label), |ui| ui_kit::text(ui, value, ui_kit::Text::Cell));
+        }
+    });
+    if closed || action == ui_kit::Action::Cancel {
+        app.menu.props = None;
+    }
 }
 
 #[cfg(test)]
@@ -152,6 +171,35 @@ mod tests {
     use serde_json::json;
 
     use crate::scenario::Harness;
+
+    #[test]
+    fn open_surface_properties_show_area_without_volume_rows() {
+        let mut h = Harness::new();
+        for (command, params) in [
+            ("sketch.create", json!({"plane": "XY", "name": "Profile"})),
+            ("sketch.line", json!({"points": [[30, 0], [30, 40]], "ids": ["side"]})),
+            ("sketch.finish", json!({})),
+            ("surface.revolve", json!({"sketch": "Profile", "curves": ["side"], "axis": "y", "angle": "270 deg", "body_name": "OpenTube"})),
+        ] {
+            h.app.run(command, params).unwrap();
+        }
+        let measured = h.app.run("inspect.measure", json!({"bodies": ["OpenTube"]})).unwrap();
+        h.app.menu.props = Some(("OpenTube".into(), measured));
+        h.frames(2);
+        assert!(h.widget("Open surface — no volume").is_some());
+        assert!(h.widget("Area").is_some());
+        for label in ["Volume", "Density", "Mass", "Center of mass"] {
+            assert!(h.widget(label).is_none(), "{label} must not be shown for an open surface");
+        }
+        assert!(h.widget("Open bodies (no volume)").is_none());
+        h.app.run("solid.box", json!({"length": 10, "width": 20, "height": 30, "body_name": "Box"})).unwrap();
+        let both = h.app.run("inspect.measure", json!({})).unwrap();
+        h.app.menu.props = Some(("2 bodies".into(), both));
+        h.frames(2);
+        for label in ["Volume", "Mass", "Open bodies (no volume)"] {
+            assert!(h.widget(label).is_some(), "{label} is shown for a solid with an open surface");
+        }
+    }
 
     #[test]
     fn the_window_edits_properties_in_one_undo_step_and_keeps_other_tools_data() {
@@ -192,6 +240,28 @@ mod tests {
         let d = h.app.design_properties.as_ref().expect("still open");
         assert!(d.error.as_deref().is_some_and(|e| e.contains("control character")), "{:?}", d.error);
         assert_eq!(h.app.session.undo.len(), undo + 1);
+    }
+
+    #[test]
+    fn each_field_is_labelled_from_the_table_of_keys() {
+        use solidcraft_engine::doc::metadata::{KEYS, Owner, keys};
+        let english = crate::i18n::Locale::for_language("en");
+        for k in KEYS {
+            assert_ne!(english.text(k.label), k.label, "`{}`'s label is in the English catalog", k.name);
+        }
+        let mut h = Harness::new();
+        // A key a newer SolidCraft might read: kept as another tool's data, never labelled as one of ours.
+        h.app.session.doc_mut().metadata.0.insert("future_key".into(), json!("kept"));
+        h.step(&json!({"start": "document.metadata"})).unwrap();
+        h.frames(2);
+        let labels: Vec<&str> = keys(Owner::Design).map(|k| english.text(k.label)).collect();
+        assert_eq!(labels, ["Project", "Part number", "Revision", "Author", "Organization", "Description", "License"]);
+        for label in &labels {
+            assert!(h.widget(label).is_some(), "{label}");
+        }
+        let d = h.app.design_properties.as_ref().unwrap();
+        assert_eq!((d.opened.len(), d.fields.len()), (labels.len(), labels.len()), "a field for each key, none for others");
+        assert!(h.widget("Other tools' data (1)").is_some(), "the unknown key is listed with other tools' data");
     }
 
     #[test]

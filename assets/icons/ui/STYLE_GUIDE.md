@@ -78,7 +78,7 @@ Its projected circle uses the same axes; do not arbitrarily flatten the ellipse.
 
 Only use the stable `source` identifiers below in model SVGs. The renderer maps roles to
 light/dark theme values. `currentColor` is the background line-art role, not a way
-to add arbitrary colours. All values and accents come from `design/palette.toml`.
+to add arbitrary colours. Default display values and semantic accents come from `design/palette.toml`. Theme files may override those display roles and ramps through `icon_palette`; source identifiers and accent assignments stay unchanged.
 
 | Role | Author helper | Light value | Use |
 | --- | --- | --- | --- |
@@ -96,9 +96,9 @@ The source hexes identify paint roles, not the displayed colour. **Never recolou
 SVG to apply a workspace accent.** Keep these identifiers and every finished shape
 unchanged; the runtime and review page resolve them through `design/palette.toml`.
 
-That file is the single colour authority: edit `light`/`dark` in the relevant
+That file is the default colour authority: edit `light`/`dark` in the relevant
 `accents` ramp; `active-3` is its primary stroke and `active-1/2` are shaded faces.
-Do not edit a role's `source` identifier. `variants` holds colour-vision adjustments.
+Do not edit a role's `source` identifier. Theme `icon_palette` overrides affect display colours only; colour-vision variants still take precedence. `variants` holds colour-vision adjustments.
 A role with `use = "active-3"` follows that stroke automatically.
 
 | Meaning | Accent | Assignment |
@@ -207,3 +207,9 @@ All artwork must be original SolidCraft work or an explicitly licensed resource
 with provenance. Commercial CAD artwork, screenshots and extracted assets are
 forbidden even as hidden references. This guide and the local finished set provide
 all required visual context for future agents.
+
+Runtime discovery is also checked by `crates/ui-egui/tests/icon_audit.rs`. New menu
+surfaces must extend that Harness traversal. Regenerate the committed
+`design/requested_icons.txt` with `UPDATE_ICON_MANIFEST=1 cargo test -p
+solidcraft-ui-egui --test icon_audit`; review the sorted id/placeholder diff. The
+review tool reads this fixture in addition to source scans, masters and aliases.

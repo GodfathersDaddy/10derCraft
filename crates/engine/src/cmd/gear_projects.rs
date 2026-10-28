@@ -158,7 +158,7 @@ pub(super) fn update(s: &mut Session, p: &Value) -> Result<Value> {
     let slot =
         state.get_mut("items").and_then(Value::as_array_mut).and_then(|a| a.get_mut(i)).ok_or_else(|| bad("gear.update", "saved design missing"))?;
     *slot = saved;
-    next.doc_mut().metadata.set(KEY, state)?;
+    next.doc_mut().metadata.set(solidcraft_doc::metadata::Owner::Design, KEY, state)?;
     super::worksheet::commit(s, next)?;
     // Read the committed document against its freshly evaluated state.
     s.refresh();

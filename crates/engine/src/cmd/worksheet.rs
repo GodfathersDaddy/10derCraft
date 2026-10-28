@@ -93,7 +93,7 @@ fn describe(s: &mut Session, p: &Value) -> Result<Value> {
     if title.len() > 256 || notes.len() > 16 * 1024 {
         return Err(bad("worksheet.describe", "title or notes too long"));
     }
-    s.doc_mut().metadata.set(KEY, json!({"title":title,"notes":notes}))?;
+    s.doc_mut().metadata.set(solidcraft_doc::metadata::Owner::Design, KEY, json!({"title":title,"notes":notes}))?;
     read(s, &json!({}))
 }
 
@@ -142,7 +142,7 @@ fn load(s: &mut Session, p: &Value) -> Result<Value> {
         if variants["items"].as_array().is_none_or(|r| r.len() > 100) {
             return Err(bad("worksheet.load", "invalid variants"));
         }
-        next.doc_mut().metadata.set(super::worksheet_variants::KEY, variants.clone())?;
+        next.doc_mut().metadata.set(solidcraft_doc::metadata::Owner::Design, super::worksheet_variants::KEY, variants.clone())?;
     }
     commit(s, next)
 }
@@ -186,7 +186,11 @@ mod tests {
         let mut s = Session::default();
         s.doc_mut()
             .metadata
-            .set(super::super::worksheet_references::CALCPAD, json!({"results":{"b":{"value":2.,"unit":"cm"}},"dirty":false}))
+            .set(
+                solidcraft_doc::metadata::Owner::Design,
+                super::super::worksheet_references::CALCPAD,
+                json!({"results":{"b":{"value":2.,"unit":"cm"}},"dirty":false}),
+            )
             .unwrap();
         s.execute("worksheet.reference", &json!({"source":"b"})).unwrap();
         assert_eq!(s.doc.param_values().0["ref_b"].v, 20.);

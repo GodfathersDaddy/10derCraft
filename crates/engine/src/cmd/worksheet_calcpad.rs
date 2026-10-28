@@ -12,7 +12,7 @@ pub fn edit(s: &mut Session, p: &Value) -> Result<Value> {
     let mut state = s.doc.metadata.get(CALCPAD).cloned().unwrap_or_else(|| json!({}));
     state["source"] = json!(source);
     state["dirty"] = json!(true);
-    s.doc_mut().metadata.set(CALCPAD, state.clone())?;
+    s.doc_mut().metadata.set(solidcraft_doc::metadata::Owner::Design, CALCPAD, state.clone())?;
     Ok(state)
 }
 
@@ -27,7 +27,7 @@ pub fn calculate(s: &mut Session, p: &Value) -> Result<Value> {
     }
     let state = json!({"source":source,"evaluated_source":source,"dirty":false,"backend":"CalcpadCE",
         "results":result["results"],"html":result["html"]});
-    s.doc_mut().metadata.set(CALCPAD, state.clone())?;
+    s.doc_mut().metadata.set(solidcraft_doc::metadata::Owner::Design, CALCPAD, state.clone())?;
     Ok(state)
 }
 

@@ -24,7 +24,7 @@ const DIR: &str = "assets/locales";
 
 /// Catalogs delivered complete: a missing message here fails `--check`. English is the source
 /// catalog and is checked implicitly; keep this in step with `COMPLETE` in `ui-egui::i18n`.
-const COMPLETE: &[&str] = &["ja", "zh"];
+const COMPLETE: &[&str] = &["ar", "he", "ja", "vi", "zh"];
 
 /// What `run` found.
 #[derive(Default)]
@@ -103,7 +103,8 @@ pub fn run(root: &Path, args: &[&str]) -> Result<(), String> {
 }
 
 /// Locale ids other than English: every catalog file that sits beside `en.json`, so a newly
-/// added locale is picked up without editing this command.
+/// added locale is picked up without editing this command. A regional English (`en-GB.json`)
+/// holds only the messages it spells differently, so it has no gaps to report.
 fn locales(root: &Path) -> Result<Vec<String>, String> {
     let dir = root.join(DIR);
     let entries = std::fs::read_dir(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
@@ -112,7 +113,7 @@ fn locales(root: &Path) -> Result<Vec<String>, String> {
         .map(|e| e.path())
         .filter(|p| p.extension().and_then(|x| x.to_str()) == Some("json"))
         .filter_map(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
-        .filter(|id| id != "en")
+        .filter(|id| id != "en" && !id.starts_with("en-"))
         .collect();
     ids.sort();
     Ok(ids)
@@ -121,8 +122,15 @@ fn locales(root: &Path) -> Result<Vec<String>, String> {
 fn read(root: &Path, locale: &str) -> Result<Map<String, Value>, String> {
     let path = root.join(DIR).join(format!("{locale}.json"));
     let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    // Messages still in assets/locales/pending/ count: they are folded on main.
+    let pending = crate::pending::locale_messages(root, locale)?;
     match serde_json::from_str(&text) {
-        Ok(Value::Object(map)) => Ok(map),
+        Ok(Value::Object(mut map)) => {
+            for (id, text) in pending {
+                map.entry(id).or_insert(Value::String(text));
+            }
+            Ok(map)
+        }
         Ok(_) => Err(format!("{}: a catalog must be a JSON object", path.display())),
         Err(e) => Err(format!("{}: {e}", path.display())),
     }

@@ -391,7 +391,13 @@ fn angled_attachment_tracks_source_plane_and_reopens() {
     let id = run(&mut s, "sketch.create", json!({"plane":pick,"project_edges":false}))["sketch"].as_u64().unwrap();
     run(&mut s, "sketch.finish", json!({}));
     let solidcraft_doc::FeatureKind::Sketch { plane, .. } = &mut s.doc_mut().feature_mut(id).unwrap().kind else { panic!("not sketch") };
-    *plane = solidcraft_doc::PlaneRef::AtAngle { base: Box::new(plane.clone()), axis_origin: Vec3::ZERO, axis_dir: Vec3::X, angle: "90 deg".into() };
+    *plane = solidcraft_doc::PlaneRef::AtAngle {
+        base: Box::new(plane.clone()),
+        axis_origin: Vec3::ZERO,
+        axis_dir: Vec3::X,
+        angle: "90 deg".into(),
+        line: None,
+    };
     s.refresh();
     let height = s.doc.find_feature("BaseFeature").unwrap().param_names[2].clone();
     run(&mut s, "parameters.change", json!({"name":height,"expression":"20 mm"}));
@@ -673,7 +679,7 @@ fn every_flat_face_of_one_sketch_extruded_up_and_down_takes_an_attached_sketch()
     assert_eq!(sketch_and_extrude_on_every_flat_face(&reopened, &dir, "synthetic-reopened"), 12);
     // The logo design as it was reported (format 17, with a removed shelled body before it).
     let mut logo = Session::default();
-    run(&mut logo, "doc.open", json!({"path": root.join("logo-up-down-join.solidcraft").to_string_lossy()}));
+    run(&mut logo, "doc.open", json!({"path": root.join("logo-up-down-join.sc").to_string_lossy()}));
     assert_eq!(sketch_and_extrude_on_every_flat_face(&logo, &dir, "logo"), 12);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -697,4 +703,58 @@ fn a_face_next_to_plane_is_refused_not_ignored() {
     assert!(s.active_sketch.is_none());
     let r = run(&mut s, "sketch.create", json!({"plane": {"face": [10, 10, 10]}}));
     assert_eq!(r["attachment"], "exact_face", "{r}");
+}
+
+/// #3248: a custom plane's `origin` that is present but not three numbers (an expression such as
+/// "w/2", a number with a unit, too few values) became [0, 0, 0] without a word. It is refused,
+/// like a bad `x_dir`, and nothing is added. A missing origin is still the world origin.
+#[test]
+fn a_custom_plane_origin_that_is_not_numbers_is_refused_not_zeroed() {
+    let mut s = Session::default();
+    run(&mut s, "parameters.add", json!({"name": "w", "expression": "40 mm"}));
+    let features = s.doc.features.len();
+    for origin in [json!(["w/2", 0, 0]), json!(["20 mm", 0, 0]), json!([20, 0]), json!("w"), json!([20, 0, null])] {
+        let p = json!({"plane": {"origin": origin, "x_dir": [0, 1, 0], "y_dir": [0, 0, 1]}});
+        let e = s.execute("sketch.create", &p).unwrap_err().to_string();
+        assert!(e.contains("origin"), "{p}: {e}");
+    }
+    assert_eq!(s.doc.features.len(), features);
+    assert!(s.active_sketch.is_none());
+    let origin_of = |s: &mut Session, plane: Value| {
+        run(s, "sketch.create", json!({"plane": plane}));
+        let r = run(s, "sketch.inspect", json!({}));
+        run(s, "sketch.finish", json!({}));
+        r["plane"]["origin"].clone()
+    };
+    assert_eq!(origin_of(&mut s, json!({"origin": [20, 0, 0], "x_dir": [0, 1, 0], "y_dir": [0, 0, 1]})), json!([20.0, 0.0, 0.0]));
+    assert_eq!(origin_of(&mut s, json!({"x_dir": [0, 1, 0], "y_dir": [0, 0, 1]})), json!([0.0, 0.0, 0.0]));
+}
+/// A sketch on a body's face projects that face's edges from the body's display mesh. The body
+/// it projects from is the model's own, not a copy that meshes it again: on a body whose curved
+/// edges are slow to mesh, the copy's mesh was thrown away and the next feature meshed the body
+/// a second time, which made a sketch on a face as slow as a cut.
+#[test]
+fn a_sketch_on_a_face_meshes_its_body_once() {
+    let mut s = Session::default();
+    run(&mut s, "solid.box", json!({"length":10,"width":10,"height":10,"body_name":"Base","name":"BaseFeature"}));
+    assert!(s.model.state().body("Base").unwrap().cached_mesh().is_none());
+    let pick = top_pick(&s, "Base");
+    run(&mut s, "sketch.create", json!({"name":"Attached","plane":pick}));
+    run(&mut s, "sketch.finish", json!({}));
+    assert!(s.model.state().body("Base").unwrap().cached_mesh().is_some(), "the sketch's projection meshed a copy of the body");
+}
+/// Issue 6720: a face picked by its point alone was refused on a body with many faces. The
+/// search charged the whole mesh once per face, and the 5 000 facets a modelled thread leaves
+/// put a plain block past the limit. The search reads each face's own triangles now.
+#[test]
+fn a_face_picked_by_point_on_a_block_with_a_modelled_thread_is_found() {
+    let mut s = Session::default();
+    run(&mut s, "solid.box", json!({"corner":[-20,-20,0],"length":40,"width":40,"height":20,"body_name":"Block"}));
+    run(&mut s, "solid.cylinder", json!({"base":[0,0,-1],"radius":3.4,"height":22,"body_name":"Bore"}));
+    run(&mut s, "solid.combine", json!({"target":"Block","tools":["Bore"],"operation":"cut"}));
+    run(&mut s, "solid.thread", json!({"face":[3.4,0,10],"designation":"M8","modeled":true}));
+    assert!(s.model.state().body("Block").unwrap().body.face_count() > 1000);
+    run(&mut s, "sketch.create", json!({"plane":{"face":[15,15,20],"fixed":true}}));
+    let plane = run(&mut s, "sketch.inspect", json!({}))["plane"].clone();
+    assert!((plane["origin"][2].as_f64().unwrap() - 20.0).abs() < 1e-6, "{plane}");
 }

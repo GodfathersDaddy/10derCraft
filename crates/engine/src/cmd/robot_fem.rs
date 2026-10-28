@@ -161,7 +161,7 @@ pub(super) fn solve(s: &mut Session, p: &Value) -> Result<Value> {
         warnings.push("Large displacement: linear superposition needs review.");
     }
     let report = json!({"schema":"solidcraft.robot-beam-fem/1","source":source,"method":"assembled cubic Hermite Euler-Bernoulli bending FE, pivoted elimination; axial/torsion closed-form","load_case":{"tcp_world_mm":tcp,"force_world_n":force,"gravity_included":false,"actuators":"locked"},"beams":reports,"tcp_displacement_mm":tcp_displacement,"tcp_deflection_mm":magnitude,"limit_mm":limit,"feasible":magnitude<=limit,"warnings":warnings,"coupling":"quasi-static CAD pose; no flexible feedback into MKS","cad_changed":false});
-    s.doc_mut().metadata.set(super::robot::FEM_KEY, report.clone())?;
+    s.doc_mut().metadata.set(solidcraft_doc::metadata::Owner::Design, super::robot::FEM_KEY, report.clone())?;
     Ok(report)
 }
 

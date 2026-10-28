@@ -121,7 +121,7 @@ fn prepare(s: &mut Session, _: &Value) -> Result<Value> {
     ] {
         next.execute("mechanics.connect", &json!({"parent":parent,"child":child}))?;
     }
-    next.doc_mut().metadata.set(KEY,json!({"version":1,"occurrences":occurrences,"joints":joints,"assumptions":"Illustrative additive CAD solids; assumed densities and elastic data; original geometry retained. Only gripper active. Locked-actuator static port path is distinct from revolute MKS joints."}))?;
+    next.doc_mut().metadata.set(solidcraft_doc::metadata::Owner::Design, KEY,json!({"version":1,"occurrences":occurrences,"joints":joints,"assumptions":"Illustrative additive CAD solids; assumed densities and elastic data; original geometry retained. Only gripper active. Locked-actuator static port path is distinct from revolute MKS joints."}))?;
     super::worksheet::commit(s, next)?;
     inspect(s, &json!({}))
 }

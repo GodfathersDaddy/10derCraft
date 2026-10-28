@@ -12,6 +12,7 @@ use rayon::prelude::*;
 
 type SPoint2 = spade::Point2<f64>;
 type Cdt = ConstrainedDelaunayTriangulation<SPoint2>;
+type VertexId = handles::FixedVertexHandle;
 type MeshedShell = Shell<Point3, PolylineCurve, Option<PolygonMesh>>;
 type MeshedCShell = CompressedShell<Point3, PolylineCurve, Option<PolygonMesh>>;
 
@@ -484,7 +485,7 @@ fn shell_create_polygon<S: PreMeshableSurface>(
         let mut mesh = trimming_tessellation(surface, &boundary, tol, cap);
         // Display and export meshes only, as the ruling grid lines: the meshes Boolean
         // operations intersect keep truck's points.
-        if tol.rulings {
+        if tol.display {
             let points: Vec<Point3> = wires.iter().flat_map(Wire::edge_iter).flat_map(|e| e.curve().0).collect();
             onto_edges(&mut mesh, &boundary, &points, tol.chord);
         }
@@ -881,21 +882,21 @@ impl PolyBoundary {
             .unwrap_or(false)
     }
 
-    /// Inserts points and adds constraint into triangulation. SolidCraft: whether every segment
-    /// went in.
-    fn insert_to(&self, triangulation: &mut Cdt) -> bool {
-        let poly2tri: Vec<_> = self
-            .0
-            .iter()
-            .flatten()
-            .map(|pt| {
-                let p = [spade_round(pt.x), spade_round(pt.y)];
-                triangulation.insert(SPoint2::from(p)).ok()
-            })
-            .collect();
-        let mut prev: Option<usize> = None;
+    /// Inserts the loops' points into the triangulation; [`Self::add_constraints`] then joins
+    /// them.
+    fn insert_points(&self, triangulation: &mut Cdt, scale: UvScale) -> Vec<Option<VertexId>> {
+        self.0.iter().flatten().map(|pt| triangulation.insert(scale.to_cdt(*pt)).ok()).collect()
+    }
+
+    /// Adds the loops' segments between the vertices [`Self::insert_points`] gave. SolidCraft: a
+    /// segment that crosses one already added is split where they meet (truck dropped it and
+    /// joined across the face; #1648), once every segment that can be added is in. A face with
+    /// more such segments than [`MAX_SPLIT_SEGMENTS`] (a rim that runs back and forth across
+    /// itself) leaves them all out, as truck did: splitting there crowds the triangulation until
+    /// spade loses its way (#4598).
+    fn add_constraints(&self, triangulation: &mut Cdt, poly2tri: &[Option<VertexId>]) {
         let mut counter = 0;
-        let mut complete = true;
+        let mut blocked = Vec::new();
         self.0
             .iter()
             .map(Vec::len)
@@ -905,73 +906,127 @@ impl PolyBoundary {
                 range.circular_tuple_windows()
             })
             .for_each(|(i, j)| {
-                let Some(vj) = poly2tri[j] else { return };
-                if let Some(p) = prev {
-                    let Some(v) = poly2tri[p] else { return };
-                    if triangulation.can_add_constraint(v, vj) {
-                        triangulation.add_constraint(v, vj);
-                        prev = None;
-                    }
+                let (Some(vi), Some(vj)) = (poly2tri[i], poly2tri[j]) else { return };
+                if vi == vj {
+                    return;
+                }
+                if triangulation.can_add_constraint(vi, vj) {
+                    triangulation.add_constraint(vi, vj);
                 } else {
-                    let Some(vi) = poly2tri[i] else { return };
-                    if triangulation.can_add_constraint(vi, vj) {
-                        triangulation.add_constraint(vi, vj);
-                    } else {
-                        complete = false;
-                        prev = Some(i);
-                    }
+                    blocked.push((vi, vj));
                 }
             });
-        complete
+        if blocked.len() <= MAX_SPLIT_SEGMENTS {
+            for (vi, vj) in blocked {
+                add_split_constraint(triangulation, vi, vj);
+            }
+        }
     }
 }
 
-/// SolidCraft: most boundary points [`pinched`] compares with every segment, and most points it
-/// puts into segments.
-const MAX_PINCH_POINTS: usize = 8192;
+/// SolidCraft: most segments of one face split where they cross others (see
+/// [`PolyBoundary::add_constraints`]).
+const MAX_SPLIT_SEGMENTS: usize = 4;
 
-/// SolidCraft: `loops` with every point that lies within `TOLERANCE` of a segment, away from its
-/// ends, put into that segment (in order along it): where a loop touches itself or another,
-/// both pass through the same point. `None` when no point does, or the loops have more than
-/// [`MAX_PINCH_POINTS`] points, or more than that would be put in.
-fn pinched(loops: &[Vec<Point2>]) -> Option<Vec<Vec<Point2>>> {
-    if loops.iter().map(Vec::len).sum::<usize>() > MAX_PINCH_POINTS {
-        return None;
+/// SolidCraft: joins `from` and `to` across the constraint edges in the way, split where they
+/// cross. Each crossing becomes a vertex (a constraint edge it lands on is split and stays a
+/// constraint) and the pieces between are added where they can be. spade's own
+/// `add_constraint_and_split` asserts when a split lands so near another vertex or constraint
+/// that the piece up to it is blocked, and the whole body was lost (#4031, #4598); such a piece
+/// is left out here, as truck did before #1653, so the face meshes slightly off instead. A
+/// segment with crowded crossings, or very many (an edge that runs back and forth), or a
+/// crossing it cannot place, is left out whole.
+fn add_split_constraint(triangulation: &mut Cdt, from: VertexId, to: VertexId) {
+    /// Closest two crossings may come along the segment, as a fraction of it.
+    const NEAR: f64 = 1e-6;
+    /// Most crossings one segment is split at.
+    const MAX_CROSSINGS: usize = 16;
+    let (p, q) = (triangulation.vertex(from).position(), triangulation.vertex(to).position());
+    let d = (q.x - p.x, q.y - p.y);
+    // Each crossing with the vertex of the edge it crosses: inserting from there is a step or two,
+    // where a walk from the last insertion can circle in a face crowded with near-coincident
+    // points and give up ("Failed to locate position").
+    let mut cuts: Vec<(f64, SPoint2, VertexId)> = Vec::new();
+    for e in triangulation.get_conflicting_edges_between_vertices(from, to) {
+        let (a, b) = (e.from().position(), e.to().position());
+        let r = (b.x - a.x, b.y - a.y);
+        let denom = d.0 * r.1 - d.1 * r.0;
+        let w = (a.x - p.x, a.y - p.y);
+        let (t, u) = ((w.0 * r.1 - w.1 * r.0) / denom, (w.0 * d.1 - w.1 * d.0) / denom);
+        if !((0.0..=1.0).contains(&t) && (0.0..=1.0).contains(&u)) || cuts.len() == MAX_CROSSINGS {
+            return;
+        }
+        cuts.push((t, SPoint2::new(p.x + d.0 * t, p.y + d.1 * t), e.from().fix()));
     }
-    let mut extra: Vec<Vec<Vec<(f64, Point2)>>> = loops.iter().map(|l| vec![Vec::new(); l.len()]).collect();
-    let mut found = 0;
-    for (l, extra) in loops.iter().zip(&mut extra) {
-        let n = l.len();
-        for (i, extra) in extra.iter_mut().enumerate() {
-            let (q0, q1) = (l[i], l[(i + 1) % n]);
-            let d = q1 - q0;
-            let len2 = d.magnitude2();
-            if len2 <= TOLERANCE2 {
-                continue;
-            }
-            for &p in loops.iter().flatten() {
-                if p.distance2(q0) <= TOLERANCE2 || p.distance2(q1) <= TOLERANCE2 {
-                    continue;
+    cuts.sort_by(|x, y| x.0.total_cmp(&y.0));
+    if cuts.windows(2).any(|w| w[1].0 - w[0].0 < NEAR) {
+        return;
+    }
+    let mut prev = from;
+    for (_, at, hint) in cuts {
+        let Ok(v) = triangulation.insert_with_hint(at, hint) else { continue };
+        if v == prev || v == to {
+            continue;
+        }
+        if triangulation.can_add_constraint(prev, v) {
+            triangulation.add_constraint(prev, v);
+        }
+        prev = v;
+    }
+    if prev != to && triangulation.can_add_constraint(prev, to) {
+        triangulation.add_constraint(prev, to);
+    }
+}
+
+/// SolidCraft: the (u, v) scale the triangulation works in, each parameter by the surface's mean
+/// speed along it (a power of two, so exact both ways): Delaunay in raw parameters fans a
+/// stretched strip (a long loft side) across the surface.
+#[derive(Clone, Copy, Debug)]
+struct UvScale([f64; 2]);
+
+impl UvScale {
+    const IDENTITY: UvScale = UvScale([1.0, 1.0]);
+    /// Most binary orders of magnitude between the two scales.
+    const MAX_EXPONENT: f64 = 30.0;
+    /// Samples per direction over the boundary's box.
+    const SAMPLES: usize = 5;
+
+    fn of(surface: &impl PreMeshableSurface, polyline: &PolyBoundary) -> Self {
+        let bdb: BoundingBox<Point2> = polyline.0.iter().flatten().collect();
+        let (min, max) = (bdb.min(), bdb.max());
+        if !(min.x.is_finite() && min.y.is_finite() && max.x.is_finite() && max.y.is_finite()) {
+            return Self::IDENTITY;
+        }
+        let n = Self::SAMPLES;
+        let (mut su, mut sv, mut count) = (0.0, 0.0, 0usize);
+        for i in 0..n {
+            for j in 0..n {
+                let (s, t) = (i as f64 / (n - 1) as f64, j as f64 / (n - 1) as f64);
+                let (u, v) = (min.x + (max.x - min.x) * s, min.y + (max.y - min.y) * t);
+                let (du, dv) = (surface.uder(u, v).magnitude(), surface.vder(u, v).magnitude());
+                if du.is_finite() && dv.is_finite() {
+                    su += du;
+                    sv += dv;
+                    count += 1;
                 }
-                let t = (p - q0).dot(d) / len2;
-                if t > 0.0 && t < 1.0 && p.distance2(q0 + d * t) <= TOLERANCE2 {
-                    if found == MAX_PINCH_POINTS {
-                        return None;
-                    }
-                    extra.push((t, p));
-                    found += 1;
-                }
             }
-            extra.sort_by(|a, b| a.0.total_cmp(&b.0));
+        }
+        // Speeds' ratio, as a power of two; none where either speed vanishes throughout.
+        let ratio = su / sv;
+        if count == 0 || !(ratio.is_finite() && ratio > 0.0) {
+            return Self::IDENTITY;
+        }
+        let e = ratio.log2().round().clamp(-Self::MAX_EXPONENT, Self::MAX_EXPONENT);
+        // The faster parameter keeps its values; the slower one is shrunk.
+        match e >= 0.0 {
+            true => UvScale([1.0, (-e).exp2()]),
+            false => UvScale([e.exp2(), 1.0]),
         }
     }
-    (found > 0).then(|| {
-        loops
-            .iter()
-            .zip(extra)
-            .map(|(l, extra)| l.iter().zip(extra).flat_map(|(p, e)| std::iter::once(*p).chain(e.into_iter().map(|(_, q)| q))).collect())
-            .collect()
-    })
+
+    fn to_cdt(self, p: Point2) -> SPoint2 { SPoint2::new(spade_round(p.x * self.0[0]), spade_round(p.y * self.0[1])) }
+
+    fn from_cdt(self, p: SPoint2) -> Point2 { Point2::new(p.x / self.0[0], p.y / self.0[1]) }
 }
 
 fn spade_round(x: f64) -> f64 {
@@ -1015,23 +1070,25 @@ pub(super) fn preview_face<S: RobustMeshableSurface>(surface: &S, loops: &[Vec<P
 // SolidCraft: the normal entry point supplies None, preserving adaptive meshing.
 fn trimming_with_steps<S: PreMeshableSurface>(surface: &S, polyboundary: &PolyBoundary, tol: Deflection, cap: usize, steps: Option<usize>) -> PolygonMesh {
     let mut triangulation = Cdt::new();
-    // SolidCraft: a loop that touches itself or another loop within `TOLERANCE` (a face pinched
-    // to a point where a body touches its edge, #1648) can cross there by less than that. A
-    // segment that would cross one already added is left out, the fallback in `insert_to` then
-    // joins the next point across the face, and the face came out with no triangles. Its
-    // segments are then taken through the points they pass, and it is triangulated again.
-    if !polyboundary.insert_to(&mut triangulation) {
-        if let Some(loops) = pinched(&polyboundary.0) {
-            triangulation = Cdt::new();
-            PolyBoundary(loops, Vec::new(), Vec::new()).insert_to(&mut triangulation);
-        }
+    // Display meshes only (see `Deflection::display`).
+    let scale = if tol.display { UvScale::of(surface, polyboundary) } else { UvScale::IDENTITY };
+    let poly2tri = polyboundary.insert_points(&mut triangulation, scale);
+    if tol.display {
+        // Every point before any constraint, so no grid point lands on a split's inexact crossing.
+        let grid = insert_surface(&mut triangulation, surface, polyboundary, tol, cap, steps, scale);
+        polyboundary.add_constraints(&mut triangulation, &poly2tri);
+        add_grid_constraints(&mut triangulation, &grid);
+    } else {
+        polyboundary.add_constraints(&mut triangulation, &poly2tri);
+        let grid = insert_surface(&mut triangulation, surface, polyboundary, tol, cap, steps, scale);
+        add_grid_constraints(&mut triangulation, &grid);
     }
-    insert_surface(&mut triangulation, surface, polyboundary, tol, cap, steps);
     let mut mesh = triangulation_into_polymesh(
         triangulation.vertices(),
         triangulation.inner_faces(),
         surface,
         polyboundary,
+        scale,
     );
     // SolidCraft: a face that came out with no triangles at all, though its boundary encloses
     // an area in space (a lens thinner than the tolerance: its two edges are different curves,
@@ -1157,7 +1214,7 @@ fn ear_clipping(points: &[[f64; 2]]) -> Option<Vec<[usize; 3]>> {
     Some(triangles)
 }
 
-/// Inserts parameter divisions into triangulation.
+/// Inserts parameter divisions into triangulation; SolidCraft: returns their vertices, row by row, for [`add_grid_constraints`].
 fn insert_surface(
     triangulation: &mut Cdt,
     surface: impl PreMeshableSurface,
@@ -1165,11 +1222,12 @@ fn insert_surface(
     tol: Deflection,
     cap: usize,
     steps: Option<usize>,
-) {
+    scale: UvScale,
+) -> Vec<Vec<Option<VertexId>>> {
     let bdb: BoundingBox<Point2> = polyline.0.iter().flatten().collect();
     let range = ((bdb.min()[0], bdb.max()[0]), (bdb.min()[1], bdb.max()[1]));
     if !(range.0 .0.is_finite() && range.0 .1.is_finite() && range.1 .0.is_finite() && range.1 .1.is_finite()) {
-        return;
+        return Vec::new();
     }
     // SolidCraft: fixed preview grids skip both adaptive division and balancing.
     let (udiv, vdiv) = if let Some(n) = steps {
@@ -1179,23 +1237,27 @@ fn insert_surface(
         let (u, v) = bounded_surface_division(&surface, range, tol, cap);
         let (u_ruled, v_ruled) = (u.len() <= 3, v.len() <= 3);
         let (u, v) = balanced_grid(&surface, u, v, cap);
-        let v = with_ruling_vertices(v, polyline, 1, tol.rulings && v_ruled, u.len(), cap);
-        let u = with_ruling_vertices(u, polyline, 0, tol.rulings && u_ruled, v.len(), cap);
-        let v = with_boundary_lines(v, polyline, 1, tol.rulings && v_ruled && !u_ruled, u.len(), cap);
-        let u = with_boundary_lines(u, polyline, 0, tol.rulings && u_ruled && !v_ruled, v.len(), cap);
+        let v = with_ruling_vertices(v, polyline, 1, tol.display && v_ruled, u.len(), cap);
+        let u = with_ruling_vertices(u, polyline, 0, tol.display && u_ruled, v.len(), cap);
+        let v = with_boundary_lines(v, polyline, 1, tol.display && v_ruled && !u_ruled, u.len(), cap);
+        let u = with_boundary_lines(u, polyline, 0, tol.display && u_ruled && !v_ruled, v.len(), cap);
         (u, v)
     };
-    let insert_res: Vec<Vec<Option<_>>> = udiv
-        .into_iter()
+    udiv.into_iter()
         .map(|u| {
             vdiv.iter()
                 .map(|v| match polyline.include(Point2::new(u, *v)) {
-                    true => triangulation.insert(SPoint2::new(u, *v)).ok(),
+                    true => triangulation.insert(scale.to_cdt(Point2::new(u, *v))).ok(),
                     false => None,
                 })
                 .collect()
         })
-        .collect();
+        .collect()
+}
+
+/// SolidCraft: joins neighbouring grid points [`insert_surface`] inserted, where no constraint
+/// is in the way (truck did this at the end of `insert_surface`).
+fn add_grid_constraints(triangulation: &mut Cdt, insert_res: &[Vec<Option<VertexId>>]) {
     insert_res.windows(2).for_each(|vec| {
         vec[0].windows(2).zip(&vec[1]).for_each(|(a, z)| {
             if let Some(x) = a[0] {
@@ -1509,6 +1571,7 @@ fn triangulation_into_polymesh<'a>(
     triangles: InnerFaceIterator<'a, SPoint2, (), CdtEdge<()>, ()>,
     surface: &impl ParametricSurface3D,
     polyline: &PolyBoundary,
+    scale: UvScale,
 ) -> PolygonMesh {
     let mut positions = Vec::<Point3>::new();
     let mut uv_coords = Vec::<Vector2>::new();
@@ -1516,7 +1579,7 @@ fn triangulation_into_polymesh<'a>(
     let vmap: HashMap<_, _> = vertices
         .enumerate()
         .map(|(i, v)| {
-            let p = *v.as_ref();
+            let p = scale.from_cdt(*v.as_ref());
             let uv = Vector2::new(p.x, p.y);
             positions.push(surface.subs(uv[0], uv[1]));
             uv_coords.push(uv);
@@ -1527,8 +1590,7 @@ fn triangulation_into_polymesh<'a>(
     let tri_faces: Vec<[StandardVertex; 3]> = triangles
         .map(|tri| tri.vertices())
         .filter(|tri| {
-            fn sp2cg(p: SPoint2) -> Point2 { Point2::new(p.x, p.y) }
-            let tri = array![i => sp2cg(*tri[i].as_ref()); 3];
+            let tri = array![i => scale.from_cdt(*tri[i].as_ref()); 3];
             let (a, b) = (tri[1] - tri[0], tri[2] - tri[0]);
             let c = tri[0] + (a + b) / 3.0;
             let area = a.x * b.y - a.y * b.x;
