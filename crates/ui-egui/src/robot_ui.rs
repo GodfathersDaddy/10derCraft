@@ -46,8 +46,8 @@ pub fn fem(app: &mut SolveApp, ui: &mut egui::Ui) -> bool {
         scenario::publish_handle(if current{"robot:fem:current"}else{"robot:fem:stale"},r.rect.center());
         let report=&state["fem"];
         ui.label(format!("TCP-Verschiebung: {:.6} mm · Grenze {:.3} mm · {}",report["tcp_deflection_mm"].as_f64().unwrap_or(0.),report["limit_mm"].as_f64().unwrap_or(0.),if report["feasible"]==true{"eingehalten"}else{"überschritten"}));
-        egui::Grid::new("robot_fem_results").striped(true).show(ui,|ui|{
-            ui.label("CAD-Körper");ui.label("Radius [mm]");ui.label("Länge [mm]");ui.label("Normalspannung [MPa]");ui.end_row();
+        egui::Grid::new("robot_fem_results").min_col_width(110.).striped(true).show(ui,|ui|{
+            ui.label("CAD-Körper");ui.label("Radius [mm]");ui.label("Länge [mm]");ui.label("Normalsp. [MPa]").on_hover_text("Maximale nominelle Normalspannung des Balkenmodells");ui.end_row();
             if let Some(beams)=report["beams"].as_array(){for b in beams{ui.label(b["body"].as_str().unwrap_or(""));for field in ["radius_mm","length_mm","max_normal_stress_mpa"]{ui.label(format!("{:.4}",b[field].as_f64().unwrap_or(0.)));}ui.end_row();}}
         });
         ui.collapsing("Diskretisierung und Lastannahmen",|ui|{ui.monospace(serde_json::to_string_pretty(&report["load_case"]).unwrap_or_default());if let Some(warnings)=report["warnings"].as_array(){for w in warnings{ui.label(w.as_str().unwrap_or(""));}}});
