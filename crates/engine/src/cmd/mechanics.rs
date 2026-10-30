@@ -11,13 +11,13 @@ use std::collections::{BTreeMap, BTreeSet};
 
 const KEY: &str = "org.solidcraft.mechanical-project";
 pub static COMMANDS:&[CommandSpec]=&[
-    CommandSpec::new("mechanics.port","Define Project Mechanical Port",port).params("id, body, occurrence?: [ids], origin?: [length expressions], quaternion?: [w,x,y,z], support?: point|surface, transfer?: point_force|frame_wrench|pressure, area_mm2?: declared surface area; saved in project"),
-    CommandSpec::new("mechanics.connect","Connect Rigid Load Path",connect).params("parent, child: port ids; explicit fixed resultant path, one parent per port, cycles rejected; not a native joint"),
-    CommandSpec::new("mechanics.disconnect","Disconnect Rigid Load Path",disconnect).params("child: port id; removes its declared parent link; existing reports become historical"),
-    CommandSpec::new("mechanics.case","Define Mechanical Load Case",case).params("id, root: port id, loads: [{port, force_n?:[x,y,z], moment_nm?:[x,y,z], pressure_mpa?:number}]; vectors in local port frame, pressure only on declared surface"),
-    CommandSpec::new("mechanics.evaluate","Evaluate Static Load Path",evaluate).noundo().params("case: id; read-only rigid-tree resultant transport, positions in mm, forces N, moments Nm; no deformation/joint reactions"),
-    CommandSpec::new("mechanics.solve","Save Static Load Path Result",solve).params("case: id; stores report and exact input snapshot in project, no CAD mutation"),
-    CommandSpec::new("mechanics.state","Inspect Project Mechanics",state).noundo().params("Saved ports, fixed paths, load cases, resolved frames, and result validity against current CAD/parameters/occurrence pose"),
+    CommandSpec::new("mechanics.port","Define Project Mechanical Port",port).icon("joint_origin").params("id, body, occurrence?: [ids], origin?: [length expressions], quaternion?: [w,x,y,z], support?: point|surface, transfer?: point_force|frame_wrench|pressure, area_mm2?: declared surface area; saved in project"),
+    CommandSpec::new("mechanics.connect","Connect Rigid Load Path",connect).icon("joint").params("parent, child: port ids; explicit fixed resultant path, one parent per port, cycles rejected; not a native joint"),
+    CommandSpec::new("mechanics.disconnect","Disconnect Rigid Load Path",disconnect).icon("delete").params("child: port id; removes its declared parent link; existing reports become historical"),
+    CommandSpec::new("mechanics.case","Define Mechanical Load Case",case).icon("settings").params("id, root: port id, loads: [{port, force_n?:[x,y,z], moment_nm?:[x,y,z], pressure_mpa?:number}]; vectors in local port frame, pressure only on declared surface"),
+    CommandSpec::new("mechanics.evaluate","Evaluate Static Load Path",evaluate).icon("graph").noundo().params("case: id; read-only rigid-tree resultant transport, positions in mm, forces N, moments Nm; no deformation/joint reactions"),
+    CommandSpec::new("mechanics.solve","Save Static Load Path Result",solve).icon("params").params("case: id; stores report and exact input snapshot in project, no CAD mutation"),
+    CommandSpec::new("mechanics.state","Inspect Project Mechanics",state).icon("graph").noundo().params("Saved ports, fixed paths, load cases, resolved frames, and result validity against current CAD/parameters/occurrence pose"),
 ];
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -44,6 +44,14 @@ struct Port {
     transfer: String,
     #[serde(default)]
     area_mm2: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    joint_origin: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    role: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    area_face: Option<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -87,7 +95,14 @@ fn id(p: &Value, key: &str) -> Result<String> {
     Ok(text.into())
 }
 fn read(s: &Session) -> Result<Network> {
-    let n: Network = serde_json::from_value(s.doc.metadata.get(KEY).cloned().unwrap_or_else(|| json!({}))).map_err(|e| error(e.to_string()))?;
+    let mut n: Network = serde_json::from_value(s.doc.metadata.get(KEY).cloned().unwrap_or_else(|| json!({}))).map_err(|e| error(e.to_string()))?;
+    for p in n.ports.values_mut() {
+        if let Some(face) = &p.area_face
+            && let Ok(area) = cad_face_area(s, &p.body, face)
+        {
+            p.area_mm2 = Some(area);
+        }
+    }
     if n.ports.len() > 128 || n.parents.len() > 128 || n.cases.len() > 32 || n.results.len() > 32 {
         return Err(error("mechanical project exceeds size limits"));
     }
@@ -113,6 +128,12 @@ fn valid_numbers(v: &[f64]) -> bool {
 }
 fn validate_port(p: &Port) -> Result<()> {
     id(&json!({"id":p.id}), "id")?;
+    if p.label.as_ref().is_some_and(|v| v.len() > 160 || v.chars().any(char::is_control))
+        || p.role.as_ref().is_some_and(|v| !["load_in", "load_out", "bidirectional"].contains(&v.as_str()))
+        || p.area_face.as_ref().is_some_and(|v| v.is_empty() || v.len() > 512 || p.support != "surface" || p.joint_origin.is_none())
+    {
+        return Err(error("invalid interface label, role or associative face support"));
+    }
     if p.body.is_empty() || p.body.len() > 200 || p.occurrence.len() > 64 || p.origin.iter().any(|e| e.len() > 4096) {
         return Err(error("invalid body, occurrence or position expression"));
     }
@@ -135,8 +156,32 @@ fn validate_port(p: &Port) -> Result<()> {
 }
 fn resolve(s: &Session, p: &Port) -> Result<Frame> {
     validate_port(p)?;
+    if let Some(face) = &p.area_face {
+        cad_face_area(s, &p.body, face)?;
+    }
     let native = s.model.state();
     let body = native.body(&p.body).ok_or_else(|| error(format!("{}: CAD body is missing", p.id)))?;
+    if let Some(name) = &p.joint_origin {
+        let origin = s.doc.assembly.origins.iter().find(|o| &o.name == name).ok_or_else(|| error("bound CAD interface missing"))?;
+        if let Some(face) = &p.area_face
+            && !matches!(&origin.origin.snap, solidcraft_doc::joints::Snap::FaceCenter { face: Some(bound), .. } if bound == face)
+        {
+            return Err(error("surface area must reference the same CAD face as its interface frame"));
+        }
+        if origin.origin.occurrence != p.occurrence.last().copied().unwrap_or(0) {
+            return Err(error("CAD interface occurrence changed"));
+        }
+        let component = if origin.origin.occurrence == 0 {
+            0
+        } else {
+            s.doc.occurrences.iter().find(|o| o.id == origin.origin.occurrence).ok_or_else(|| error("interface occurrence missing"))?.component
+        };
+        if s.doc.model_body_component(body) != component {
+            return Err(error("interface body/component mismatch"));
+        }
+        let m = super::mks_interfaces::frame(s, name)?;
+        return Ok(Frame { origin: Vec3::new(m[3][0], m[3][1], m[3][2]), axes: [0, 1, 2].map(|i| Vec3::new(m[i][0], m[i][1], m[i][2])) });
+    }
     let placement = if p.occurrence.is_empty() {
         if s.doc.model_body_component(body) != 0 {
             return Err(error(format!("{}: component body requires an exact occurrence path", p.id)));
@@ -200,6 +245,9 @@ fn port(s: &mut Session, p: &Value) -> Result<Value> {
             }
         }
     }
+    if let Some(face) = &port.area_face {
+        port.area_mm2 = Some(cad_face_area(s, &port.body, face)?);
+    }
     validate_port(&port)?;
     resolve(s, &port)?;
     if !n.ports.contains_key(&key) && n.ports.len() >= 128 {
@@ -207,6 +255,20 @@ fn port(s: &mut Session, p: &Value) -> Result<Value> {
     }
     n.ports.insert(key, port);
     save(s, &n)
+}
+/// Resolve one persistent planar CAD face; area is refreshed after dimension edits.
+/// A missing/ambiguous face is invalid, never replaced by its old scalar area.
+pub(super) fn cad_face_area(s: &Session, body: &str, face: &str) -> Result<f64> {
+    let st = s.model.state();
+    let body = st.body(body).ok_or_else(|| error("surface body missing"))?;
+    let names = solidcraft_doc::naming::face_names(body);
+    let indices: Vec<_> = names.iter().enumerate().filter(|(_, n)| n.as_str() == face).map(|(i, _)| i).collect();
+    let [index] = indices.as_slice() else { return Err(error("surface face missing or ambiguous")) };
+    let native = body.body.faces(0.01)?.into_iter().find(|f| f.index == *index).ok_or_else(|| error("surface face missing"))?;
+    if native.plane_normal.is_none() || !native.area.is_finite() || native.area <= 0. || native.area > 1e12 {
+        return Err(error("a bounded planar face with positive area is required"));
+    }
+    Ok(native.area)
 }
 fn validate_graph(n: &Network) -> Result<()> {
     for (child, parent) in &n.parents {

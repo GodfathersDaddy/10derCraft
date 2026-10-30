@@ -23,6 +23,7 @@ permissions:
 
 jobs:
   corpus:
+    if: ${{ github.repository == 'tangency-labs/solidcraft' }}
     name: Import the external STEP corpus
     runs-on: ubuntu-24.04
     timeout-minutes: 120

@@ -29,6 +29,7 @@ env:
 
 jobs:
   submit:
+    if: ${{ github.repository == 'tangency-labs/solidcraft' }}
     runs-on: ubuntu-latest
     steps:
       - id: check

@@ -1,14 +1,75 @@
 //! One read-only result scene for desktop preview and reproducible PNG/GIF exports.
 use super::CommandSpec;
+use crate::schema::{TypedContract, output_schema_for};
 use crate::{Result, Session, params::bad, view::Palette};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use solidcraft_doc::{Mat, apply_point, apply_vector};
 use solidcraft_geom::{Aabb3, Vec3};
 use solidcraft_render::{Camera, Rgb, Scene, SceneLine, SceneMesh, StandardView};
 use std::sync::Arc;
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct FemSnapshotParams {
+    path: String,
+    #[serde(default)]
+    scale: Option<f64>,
+    #[serde(default)]
+    width: Option<u32>,
+    #[serde(default)]
+    height: Option<u32>,
+    #[serde(default)]
+    view: Option<String>,
+    #[serde(default)]
+    camera: Option<Value>,
+    #[serde(default)]
+    overwrite: Option<bool>,
+}
+#[derive(Serialize, JsonSchema)]
+struct FemSnapshotOutput {
+    path: String,
+    scale: f64,
+    width: usize,
+    height: usize,
+    bytes: usize,
+    cad_changed: bool,
+    max_display_displacement_mm: f64,
+    field: String,
+    model: String,
+    camera: Value,
+}
+const FEM_SNAPSHOT_CONTRACT: TypedContract<FemSnapshotParams> = TypedContract::new();
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct VideoParams {
+    path: String,
+    width: Option<u32>,
+    height: Option<u32>,
+    fps: Option<u32>,
+    quality: Option<u8>,
+    view: Option<String>,
+    camera: Option<Value>,
+    overwrite: Option<bool>,
+}
+#[derive(Serialize, JsonSchema)]
+struct VideoOutput {
+    path: String,
+    frames: usize,
+    fps: u32,
+    width: usize,
+    height: usize,
+    bytes: usize,
+    source_duration_s: f64,
+    cad_changed: bool,
+    codec: String,
+}
+const VIDEO: TypedContract<VideoParams> = TypedContract::new();
 pub static COMMANDS:&[CommandSpec]=&[
-    CommandSpec::new("mks.result.snapshot","Export Dynamics PNG",snapshot).noundo().params("sample: index, path: new .png path, width?:800,height?:500,view?:iso|front|top|...,camera?:full Camera object,overwrite?:false; renders stored current result without changing CAD"),
-    CommandSpec::new("mks.result.animation","Export Dynamics GIF",animation).noundo().params("path: new .gif path,width?:480,height?:320,view?:iso|front|top|...,speed?:1,overwrite?:false; all stored samples with one fixed camera, GIF delay rounded to 0.01 s"),
+    CommandSpec::new("robot.fem.snapshot","Export Robot Beam Deformation PNG",crate::checked!("robot.fem.snapshot", fem_snapshot)).icon("save").contract(&FEM_SNAPSHOT_CONTRACT).output(output_schema_for::<FemSnapshotOutput>).noundo().params("path: new .png path, scale?:1 in 0..10000, width?:800,height?:500,view?:iso|front|top,camera?:Camera,overwrite?:false; current locked-actuator beam FEM; non-beam CAD is reference only"),
+    CommandSpec::new("mks.result.snapshot","Export Dynamics PNG",snapshot).icon("save").noundo().params("sample: index, path: new .png path, width?:800,height?:500,view?:iso|front|top|...,camera?:full Camera object,overwrite?:false; renders stored current result without changing CAD"),
+    CommandSpec::new("mks.result.animation","Export Dynamics GIF",animation).icon("timeline_play").noundo().params("path: new .gif path,width?:480,height?:320,view?:iso|front|top|...,speed?:1,overwrite?:false; all stored samples with one fixed camera, GIF delay rounded to 0.01 s"),
+    CommandSpec::new("mks.result.video","Export Dynamics AVI",crate::checked!("mks.result.video", video)).icon("timeline_play").contract(&VIDEO).output(output_schema_for::<VideoOutput>).noundo(),
 ];
 fn error(s: impl Into<String>) -> crate::EngineError {
     bad("mks.result.export", s)
@@ -113,7 +174,7 @@ fn options<'a>(p: &'a Value, extension: &str, defaults: (usize, usize)) -> Resul
 }
 fn snapshot(s: &mut Session, p: &Value) -> Result<Value> {
     let (path, width, height, mut camera) = options(p, ".png", (800, 500))?;
-    let sample = p.get("sample").and_then(Value::as_u64).filter(|v| *v < 101).ok_or_else(|| error("sample index required"))? as usize;
+    let sample = p.get("sample").and_then(Value::as_u64).filter(|v| *v < 1001).ok_or_else(|| error("sample index required"))? as usize;
     let (scene, bounds) = assembly_result_scene(s, sample, Palette::DEFAULT)?;
     if p.get("camera").is_none() {
         camera.fit(&bounds);
@@ -133,15 +194,19 @@ fn animation(s: &mut Session, p: &Value) -> Result<Value> {
         return Err(error("current dynamics result required"));
     }
     let times = state["data"]["result"]["times_s"].as_array().ok_or_else(|| error("times missing"))?;
-    let count = times.len();
-    if !(2..=101).contains(&count) || width * height * count > 8_000_000 {
+    let samples = times.len();
+    let count = samples.min(101).min(8_000_000 / (width * height).max(1));
+    if !(2..=1001).contains(&samples) || count < 2 {
         return Err(error("animation limited to 101 frames / 8 million total pixels; reduce width/height"));
     }
-    let interval = times.get(1).and_then(Value::as_f64).ok_or_else(|| error("invalid interval"))?;
+    let duration = times.last().and_then(Value::as_f64).ok_or_else(|| error("invalid interval"))?
+        - times.first().and_then(Value::as_f64).ok_or_else(|| error("invalid interval"))?;
+    let interval = duration / (count - 1) as f64;
+    let indices: Vec<_> = (0..count).map(|i| i * (samples - 1) / (count - 1)).collect();
     let delay = (interval / speed * 100.).round().clamp(1., 65535.) as u16;
     let mut bounds = Aabb3::EMPTY;
     let mut triangles = 0;
-    for i in 0..count {
+    for &i in &indices {
         let (scene, b) = assembly_result_scene(s, i, Palette::DEFAULT)?;
         bounds = bounds.union(&b);
         triangles += scene.meshes.iter().map(|m| m.mesh.triangles.len()).sum::<usize>();
@@ -153,7 +218,7 @@ fn animation(s: &mut Session, p: &Value) -> Result<Value> {
         camera.fit(&bounds);
     }
     let mut frames = Vec::new();
-    for i in 0..count {
+    for &i in &indices {
         let (mut scene, _) = assembly_result_scene(s, i, Palette::DEFAULT)?;
         scene.radius = bounds.diagonal().max(1.);
         frames.push(solidcraft_render::render(&scene, &camera, width, height).rgba);
@@ -162,5 +227,85 @@ fn animation(s: &mut Session, p: &Value) -> Result<Value> {
     solidcraft_io::vfs::write(path, &gif).map_err(|e| error(e.to_string()))?;
     Ok(
         json!({"path":path,"frames":count,"width":width,"height":height,"bytes":gif.len(),"delay_s":delay as f64*0.01,"stored_interval_s":interval,"cad_changed":false,"renderer":"cpu","loop":true,"timing":"centisecond quantization; includes last-frame hold"}),
+    )
+}
+
+fn video(s: &mut Session, p: &Value) -> Result<Value> {
+    let input: VideoParams = serde_json::from_value(p.clone()).map_err(|e| error(e.to_string()))?;
+    let (path, width, height, mut camera) = options(p, ".avi", (640, 360))?;
+    let fps = input.fps.unwrap_or(30);
+    let quality = input.quality.unwrap_or(85);
+    if !(1..=60).contains(&fps) || !(1..=100).contains(&quality) {
+        return Err(error("fps must be 1..60 and JPEG quality 1..100"));
+    }
+    let replay = super::mks_replay::prepare(s)?;
+    let start = replay.times()[0];
+    let duration = replay.times().last().copied().ok_or_else(|| error("times missing"))? - start;
+    if !duration.is_finite() || duration <= 0. || duration > 10. {
+        return Err(error("video trajectory must have a finite duration in 0..10 seconds"));
+    }
+    let count = (duration * f64::from(fps)).ceil() as usize + 1;
+    if !(2..=601).contains(&count) || width * height * count > 150_000_000 {
+        return Err(error("video limited to 601 frames / 150 million pixels; reduce resolution or fps"));
+    }
+    if input.camera.is_none() {
+        camera.fit(&replay.bounds);
+    }
+    let mut frames = Vec::with_capacity(count);
+    let mut encoded_bytes = 0;
+    for i in 0..count {
+        let time = (start + i as f64 / f64::from(fps)).min(start + duration);
+        let mut scene = Scene { background: Some(Palette::DEFAULT.background), radius: replay.bounds.diagonal().max(1.), ..Scene::default() };
+        for (source, world) in replay.meshes.iter().zip(replay.worlds(time)) {
+            let mut mesh = (*source.mesh).clone();
+            for p in &mut mesh.positions {
+                *p = apply_point(&world, *p);
+            }
+            for n in &mut mesh.normals {
+                *n = apply_vector(&world, *n);
+            }
+            mesh.edges.clear();
+            scene.meshes.push(SceneMesh::solid(Arc::new(mesh), source.color));
+        }
+        let pixels = solidcraft_render::render(&scene, &camera, width, height);
+        let rgba = image::RgbaImage::from_raw(width as u32, height as u32, pixels.rgba).ok_or_else(|| error("invalid frame dimensions"))?;
+        let rgb = image::DynamicImage::ImageRgba8(rgba).into_rgb8();
+        let mut jpeg = Vec::new();
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, quality).encode_image(&rgb).map_err(|e| error(e.to_string()))?;
+        encoded_bytes += jpeg.len() + 32;
+        if encoded_bytes > 127 * 1024 * 1024 {
+            return Err(error("video exceeds 128 MiB"));
+        }
+        frames.push(jpeg);
+    }
+    let avi = solidcraft_io::avi::mjpeg(width as u32, height as u32, fps, &frames).map_err(error)?;
+    solidcraft_io::vfs::write(path, &avi).map_err(|e| error(e.to_string()))?;
+    Ok(json!(VideoOutput {
+        path: path.into(),
+        frames: count,
+        fps,
+        width,
+        height,
+        bytes: avi.len(),
+        source_duration_s: duration,
+        cad_changed: false,
+        codec: "MJPEG / AVI".into()
+    }))
+}
+
+fn fem_snapshot(s: &mut Session, p: &Value) -> Result<Value> {
+    let (path, width, height, mut camera) = options(p, ".png", (800, 500))?;
+    let scale = match p.get("scale") {
+        None => 1.,
+        Some(v) => v.as_f64().ok_or_else(|| error("scale must be a number"))?,
+    };
+    let (scene, bounds, maximum) = super::robot_fem::result_scene(s, scale, Palette::DEFAULT)?;
+    if p.get("camera").is_none() {
+        camera.fit(&bounds);
+    }
+    let png = solidcraft_render::render_png(&scene, &camera, width, height).ok_or_else(|| error("PNG encoding failed"))?;
+    solidcraft_io::vfs::write(path, &png).map_err(|e| error(e.to_string()))?;
+    Ok(
+        json!({"path":path,"scale":scale,"width":width,"height":height,"bytes":png.len(),"cad_changed":false,"max_display_displacement_mm":maximum,"field":"displacement magnitude, blue-green-red; display amplification does not change scalar values","model":"locked-actuator beam FEM; non-beam CAD is undeformed reference","camera":camera}),
     )
 }

@@ -27,9 +27,13 @@ pub struct DocSlot {
     pre_sketch_marker: Option<Option<usize>>,
     pub(crate) pending_feature_edit: Option<crate::feature_edit::PendingFeatureEdit>,
     pre_sketch_cam: Option<crate::PreSketchView>,
+    pre_sketch_component: Option<crate::PreSketchComponent>,
     view: DocView,
     occurrence_move: Option<crate::browser::OccMove>,
     agent_chat: crate::agent_chat::AgentChat,
+    /// Its linked design files as the design last read them (`Documents::link_stamps`).
+    link_stamps: Vec<(u64, crate::linked_source::Stamp)>,
+    edit_in_place: Option<crate::edit_in_place::PartContext>,
 }
 
 /// The per-design part of the UI state the session doesn't keep (what is hidden, shown or locked
@@ -37,12 +41,14 @@ pub struct DocSlot {
 #[derive(Clone, Debug, Default)]
 struct DocView {
     render: crate::render_workspace::ViewState,
-    /// Bodies and components copied or cut in this design: their names and paths mean nothing
-    /// in another one (copied features stay with the session the same way).
+    /// Bodies, components and features copied or cut in this design: their names and paths mean nothing
+    /// in another one (copied features stay with the session the same way). Another design
+    /// pastes them from `SolveApp::foreign_copy`.
     copied_bodies: Vec<String>,
     copied_placements: Vec<Vec<u64>>,
-    cut_bodies: Vec<String>,
-    cut_placements: Vec<Vec<u64>>,
+    cut: crate::edit_clipboard::CutSet,
+    /// `SolveApp::own_clipboard_stamp`.
+    own_clipboard_stamp: u64,
 }
 
 impl DocSlot {
@@ -55,9 +61,12 @@ impl DocSlot {
             pre_sketch_marker: None,
             pending_feature_edit: None,
             pre_sketch_cam: None,
+            pre_sketch_component: None,
             view: DocView::default(),
             occurrence_move: None,
             agent_chat: Default::default(),
+            link_stamps: Vec::new(),
+            edit_in_place: None,
         }
     }
 }
@@ -79,6 +88,11 @@ pub struct Documents {
     /// is closed first, so the ones before it keep their places). One with unsaved changes asks
     /// first; Cancel stops the rest (#3055).
     pub batch: Option<Vec<usize>>,
+    /// The shown design's linked design files as it last read them: their modification time and
+    /// size when Update Links last read each without an error, or when the design first showed
+    /// the link (opened, adopted in place, the link just made).
+    /// Coming back to its tab reads again those that differ (`linked_source::update_changed`).
+    pub(crate) link_stamps: Vec<(u64, crate::linked_source::Stamp)>,
 }
 
 impl Documents {
@@ -102,8 +116,8 @@ fn take_view(app: &mut SolveApp) -> DocView {
         render: std::mem::take(&mut app.render_workspace.view),
         copied_bodies: std::mem::take(&mut app.copied_bodies),
         copied_placements: std::mem::take(&mut app.copied_placements),
-        cut_bodies: std::mem::take(&mut app.cut_bodies),
-        cut_placements: std::mem::take(&mut app.cut_placements),
+        cut: std::mem::take(&mut app.cut),
+        own_clipboard_stamp: app.own_clipboard_stamp,
     }
 }
 
@@ -114,8 +128,9 @@ fn put_view(app: &mut SolveApp, v: DocView) {
     crate::render_workspace::sync_backend(app);
     app.copied_bodies = v.copied_bodies;
     app.copied_placements = v.copied_placements;
-    app.cut_bodies = v.cut_bodies;
-    app.cut_placements = v.cut_placements;
+    app.cut = v.cut;
+    app.own_clipboard_stamp = v.own_clipboard_stamp;
+    crate::edit_clipboard::drop_stale(app);
 }
 
 /// Put `slot` into the app and return what was there.
@@ -124,6 +139,7 @@ fn swap_in(app: &mut SolveApp, mut slot: DocSlot) -> DocSlot {
         let _ = crate::render_workspace::enter(app, false);
     }
     // Whatever was going on in the design leaves with it.
+    crate::timeline::stop_playback(app);
     crate::sketch_text_move::cancel_drag(app);
     crate::dialogs::cancel(app);
     crate::dim_view::cancel();
@@ -135,7 +151,7 @@ fn swap_in(app: &mut SolveApp, mut slot: DocSlot) -> DocSlot {
     app.viewport.orbit_free = None;
     app.preview.reset();
     app.viewport.hover = None;
-    app.menu.props = None;
+    crate::design_properties::close_object(app);
     crate::sketch_attachment_ui::clear(app);
     crate::agent_chat::leave_document(app);
     app.agent_chat.swap_document(&mut slot.agent_chat);
@@ -148,16 +164,22 @@ fn swap_in(app: &mut SolveApp, mut slot: DocSlot) -> DocSlot {
         pre_sketch_marker: std::mem::replace(&mut app.pre_sketch_marker, slot.pre_sketch_marker),
         pending_feature_edit: std::mem::replace(&mut app.pending_feature_edit, slot.pending_feature_edit),
         pre_sketch_cam: std::mem::replace(&mut app.pre_sketch_cam, slot.pre_sketch_cam),
+        pre_sketch_component: std::mem::replace(&mut app.pre_sketch_component, slot.pre_sketch_component),
         view: take_view(app),
         occurrence_move: std::mem::replace(&mut app.tree.occurrence_move, slot.occurrence_move),
         agent_chat: slot.agent_chat,
+        link_stamps: std::mem::replace(&mut app.docs.link_stamps, slot.link_stamps),
+        edit_in_place: std::mem::replace(&mut app.edit_in_place.active, slot.edit_in_place),
     };
     // Only the displayed design owns the process-wide crash replay journal.
     app.session.crash_journal = out.session.crash_journal;
     out.session.crash_journal = false;
     put_view(app, slot.view);
+    // Components picked in the browser are the outgoing design's: Copy must not copy them here.
+    app.tree.picked_components.clear();
     // Preferences the session holds go with the user, not the tab (#680).
     app.session.auto_project = out.session.auto_project;
+    app.session.set_single_surface_analysis(app.preferences.single_surface_analysis);
     // Views cache by revision: the incoming design must not look unchanged.
     let before = app.session.revision;
     app.session.invalidate_view(out_rev);
@@ -206,12 +228,76 @@ pub fn switch(app: &mut SolveApp, i: usize) {
         return;
     }
     let Some(incoming) = app.docs.slots.get_mut(i).and_then(Option::take) else { return };
+    crate::linked_source::note_unread(app);
     let out = swap_in(app, incoming);
     let a = app.docs.active;
     if let Some(s) = app.docs.slots.get_mut(a) {
         *s = Some(out);
     }
     app.docs.active = i;
+    // Closing several tabs, quitting, or a "save changes?" for this tab goes through them, and a
+    // save then must not wait for a read: what they missed waits for their return.
+    // An assembly reading its links for a part edited in place takes them all up once it is done.
+    if app.docs.batch.is_none()
+        && app.docs.quitting.is_none()
+        && app.docs.closing.is_none()
+        && crate::edit_in_place::refreshing_assembly(app).is_none()
+    {
+        crate::linked_source::update_changed(app);
+    }
+    crate::edit_in_place::attach(app);
+}
+
+/// Show the next design tab (`forward`) or the previous one, going round from the last to the
+/// first (Ctrl+Tab and Ctrl+Shift+Tab, #8565). Not while tabs are being closed one after another
+/// or a "save changes?" prompt is open, as for `move_tab`.
+pub fn cycle(app: &mut SolveApp, forward: bool) {
+    let n = app.docs.slots.len();
+    if n < 2 || app.docs.closing.is_some() || app.docs.quitting.is_some() || app.docs.batch.is_some() {
+        return;
+    }
+    let a = app.docs.active;
+    switch(app, if forward { (a + 1) % n } else { (a + n - 1) % n });
+}
+
+/// The open design saved at `path`, shown or in the background.
+pub(crate) fn session_at<'a>(app: &'a SolveApp, path: &str) -> Option<&'a Session> {
+    let saved_at = |s: &Session| s.path.as_deref().is_some_and(|p| same_path(p, path));
+    if saved_at(&app.session) {
+        return Some(&app.session);
+    }
+    app.docs.slots.iter().flatten().map(|s| &s.session).find(|s| saved_at(s))
+}
+
+/// Every edit in place: of the tab shown, and of the tabs in the background.
+pub(crate) fn edits_mut(app: &mut SolveApp) -> Vec<&mut crate::edit_in_place::PartContext> {
+    let mut edits: Vec<_> = app.docs.slots.iter_mut().flatten().filter_map(|s| s.edit_in_place.as_mut()).collect();
+    edits.extend(app.edit_in_place.active.as_mut());
+    edits
+}
+
+/// The open design saved at `path` read every link again without an error, from the files as
+/// `stamps` found them: its record of them (`Documents::link_stamps`, or its tab's) is now that.
+pub(crate) fn record_stamps_at(app: &mut SolveApp, path: &str, stamps: &[(u64, crate::linked_source::Stamp)]) {
+    let record = if app.session.path.as_deref().is_some_and(|p| same_path(p, path)) {
+        &mut app.docs.link_stamps
+    } else {
+        let saved_at = |s: &DocSlot| s.session.path.as_deref().is_some_and(|p| same_path(p, path));
+        let Some(slot) = app.docs.slots.iter_mut().flatten().find(|s| saved_at(s)) else { return };
+        &mut slot.link_stamps
+    };
+    for (c, s) in stamps {
+        crate::linked_source::record(record, *c, *s);
+    }
+}
+
+/// [`session_at`], to change it.
+pub(crate) fn session_at_mut<'a>(app: &'a mut SolveApp, path: &str) -> Option<&'a mut Session> {
+    let saved_at = |s: &Session| s.path.as_deref().is_some_and(|p| same_path(p, path));
+    if saved_at(&app.session) {
+        return Some(&mut app.session);
+    }
+    app.docs.slots.iter_mut().flatten().map(|s| &mut s.session).find(|s| saved_at(s))
 }
 
 /// Select an already-open saved design without reloading or framing it. Identity is derived
@@ -236,7 +322,7 @@ pub(crate) fn reuse_path(app: &mut SolveApp, path: &str) -> Result<bool, String>
     Ok(true)
 }
 
-fn same_path(a: &str, b: &str) -> bool {
+pub(crate) fn same_path(a: &str, b: &str) -> bool {
     if a == b {
         return true;
     }
@@ -287,9 +373,12 @@ pub fn adopt(app: &mut SolveApp, session: Session) {
         reset_chat(app);
         crate::dialogs::cancel(app);
         app.tool = None;
-        app.menu.props = None;
+        crate::design_properties::close_object(app);
         crate::sketch_attachment_ui::clear(app);
         app.session.replace_design(session);
+        // The blank design's record of its links goes with it; the new one's start now.
+        app.docs.link_stamps.clear();
+        crate::linked_source::note_unread(app);
         crate::render_workspace::reset_document(app);
         app.session.invalidate_view(rev);
         app.cam = Camera::default();
@@ -383,6 +472,7 @@ pub fn close(app: &mut SolveApp, i: usize, force: bool) {
         app.fit_view();
         put_view(app, DocView::default());
         app.docs = Documents::default();
+        app.edit_in_place = Default::default();
         app.home.open = true;
         return;
     }
@@ -438,18 +528,23 @@ fn batch_step(app: &mut SolveApp) {
     if app.docs.closing.is_some() || app.docs.quitting.is_some() {
         return;
     }
-    let Some(mut left) = app.docs.batch.take() else { return };
-    while let Some(i) = left.pop() {
+    if app.docs.batch.is_none() {
+        return;
+    }
+    // The tabs left stay in `batch` while each closes, so the tabs shown on the way know it.
+    while let Some(i) = app.docs.batch.as_mut().and_then(Vec::pop) {
         if i >= app.docs.count() {
             continue;
         }
         if dirty(app, i) {
             app.docs.closing = Some(i);
-            app.docs.batch = Some(left);
             return;
         }
         close(app, i, true);
     }
+    app.docs.batch = None;
+    // The tab left in front reads now what it skipped on the way.
+    crate::linked_source::update_changed(app);
 }
 
 /// Quit (the title bar's ×, File ▸ Quit, the window being closed): asks "save changes?" for each
@@ -518,6 +613,26 @@ pub fn tabs_info(app: &SolveApp) -> Vec<(String, bool)> {
             Some(d) => (d.session.doc.name.clone(), d.session.is_dirty()),
             None => (app.session.doc.name.clone(), app.session.is_dirty()),
         })
+        .collect()
+}
+
+/// A design open in another tab, as Insert Design offers it (#8570): its name, its file (`None`:
+/// not saved yet, so there is nothing to link) and whether it has unsaved changes.
+pub(crate) struct OpenDesign {
+    pub name: String,
+    pub path: Option<String>,
+    pub unsaved: bool,
+}
+
+/// The designs open in the other tabs, in tab order: none on the shown design's file, and no
+/// blank one (an empty new design has nothing to insert).
+pub(crate) fn other_designs(app: &SolveApp) -> Vec<OpenDesign> {
+    let shown = app.session.path.as_deref();
+    app.docs
+        .background()
+        .filter(|s| s.path.is_some() || !s.doc.features.is_empty())
+        .filter(|s| !s.path.as_deref().zip(shown).is_some_and(|(a, b)| same_path(a, b)))
+        .map(|s| OpenDesign { name: s.doc.name.clone(), path: s.path.clone(), unsaved: s.is_dirty() })
         .collect()
 }
 
@@ -617,43 +732,35 @@ struct TabDrag {
 /// drag to reorder, + for a new design.
 pub fn tabs(app: &mut SolveApp, ui: &mut egui::Ui, r: Rect, x0: f32, x1: f32) {
     let t = Tokens::get();
-    let home = Rect::from_min_size(pos2(x0, r.top() + 5.0), vec2(66.0, r.height() - 5.0));
-    let response = ui.interact(home, ui.id().with("home_tab"), Sense::click());
-    tab_shape(ui.painter(), &t, home, app.home.open, response.hovered());
-    let home_text = app.tr("ui.home");
-    ui.painter().text(
-        home.center(),
-        Align2::CENTER_CENTER,
-        home_text,
-        FontId::proportional(13.0),
-        if app.home.open { t.text } else { t.app_bar_text },
-    );
-    crate::scenario::publish_handle("tab:home", home.center());
-    if response.clicked() && !app.file_load.busy() {
-        app.ui.project_page = "cad".into();
-        app.ui.engineering_dialog = None;
-        app.home.show(app.session.revision);
+    // Below this width even Home + one minimum-width document + overflow + New
+    // would exceed the clipped strip. The persistent house still opens Home;
+    // the overflow menu carries every document and project workspace.
+    let compact_strip = x1 - x0 < 230.;
+    if !compact_strip {
+        let home = Rect::from_min_size(pos2(x0, r.top() + 5.0), vec2(66.0, r.height() - 5.0));
+        let response = ui.interact(home, ui.id().with("home_tab"), Sense::click());
+        tab_shape(ui.painter(), &t, home, app.home.open, response.hovered());
+        let home_text = app.tr("ui.home");
+        ui.painter().text(home.center(), Align2::CENTER_CENTER, home_text, FontId::proportional(13.0), t.app_bar_text);
+        crate::scenario::publish_handle("tab:home", home.center());
+        if response.clicked() && !app.file_load.busy() {
+            app.ui.project_page = "cad".into();
+            app.ui.engineering_dialog = None;
+            app.home.show(app.session.revision);
+        }
     }
-    let mut page_x = x0 + 70.0;
-    for (page, label, width) in [("parameters", "Parameter", 92.), ("cad", "CAD", 54.), ("fem", "FEM", 54.), ("mks", "MKS", 54.)] {
+    const PAGES: [(&str, &str, f32); 4] = [("parameters", "Parameter", 92.), ("cad", "CAD", 54.), ("fem", "FEM", 54.), ("mks", "MKS", 54.)];
+    let compact_pages = x1 - (x0 + 70.) < 262. + 160.;
+    let mut page_x = x0 + if compact_strip { 0. } else { 70. };
+    for (page, label, width) in PAGES.into_iter().filter(|_| !compact_pages) {
         let rect = Rect::from_min_size(pos2(page_x, r.top() + 5.), vec2(width, r.height() - 5.));
         let response = ui.interact(rect, ui.id().with(("project_page", page)), Sense::click());
         let active = !app.home.open && app.ui.project_page == page;
         tab_shape(ui.painter(), &t, rect, active, response.hovered());
-        ui.painter().text(rect.center(), Align2::CENTER_CENTER, label, FontId::proportional(13.), if active { t.text } else { t.app_bar_text });
+        ui.painter().text(rect.center(), Align2::CENTER_CENTER, label, FontId::proportional(13.), t.app_bar_text);
         crate::scenario::publish_handle(&format!("project:{page}"), rect.center());
         if response.clicked() && !app.file_load.busy() {
-            app.home.open = false;
-            app.ui.engineering_dialog = None;
-            match page {
-                "parameters" => app.start("worksheet.open"),
-                "fem" => app.start("studio.fem.open"),
-                "mks" => app.start("studio.system.open"),
-                _ => {
-                    let _ = app.run("studio.view", json!({"page":"cad"}));
-                }
-            }
-            app.ui.project_page = page.into();
+            activate_project_page(app, page);
         }
         page_x += width + 2.;
     }
@@ -661,9 +768,11 @@ pub fn tabs(app: &mut SolveApp, ui: &mut egui::Ui, r: Rect, x0: f32, x1: f32) {
     let info = tabs_info(app);
     let paths = tab_paths(app);
     let n = info.len();
-    let (first, shown, w) = layout(n, app.docs.active, x1 - x0);
+    let room = x1 - x0 - if compact_pages { 26. } else { 0. };
+    let (first, shown, w) = if compact_strip { (0, 0, 0.) } else { layout(n, app.docs.active, room) };
     let mut pick: Option<usize> = None;
     let mut shut: Option<usize> = None;
+    let mut project_pick = None;
     // Each tab fits its name (up to MAX_FIT) while all of them fit; otherwise they share the room.
     const MAX_FIT: f32 = 200.0;
     let natural: Vec<f32> = info
@@ -675,7 +784,7 @@ pub fn tabs(app: &mut SolveApp, ui: &mut egui::Ui, r: Rect, x0: f32, x1: f32) {
             (text + 40.0).clamp(72.0, MAX_FIT)
         })
         .collect();
-    let fit_all = shown == n && natural.iter().sum::<f32>() <= x1 - x0 - 34.0;
+    let fit_all = shown == n && natural.iter().sum::<f32>() <= room - 34.0;
     // A right-click on a tab opens its menu (#3055): the tab and where the menu opens.
     let menu_id = egui::Id::new("sc_doc_tab_menu");
     let mut menu: Option<(usize, egui::Pos2)> = ui.ctx().data(|d| d.get_temp(menu_id));
@@ -792,7 +901,7 @@ pub fn tabs(app: &mut SolveApp, ui: &mut egui::Ui, r: Rect, x0: f32, x1: f32) {
     });
     let mut x = strip_end;
     // More tabs than fit: a chevron lists them all.
-    if shown < n {
+    if shown < n || compact_pages {
         let mr = Rect::from_center_size(pos2(x + 12.0, r.center().y), vec2(20.0, 22.0));
         let mresp = ui.interact(mr, ui.id().with("doc_more"), Sense::click());
         crate::scenario::publish_handle("tab:overflow", mr.center());
@@ -802,12 +911,13 @@ pub fn tabs(app: &mut SolveApp, ui: &mut egui::Ui, r: Rect, x0: f32, x1: f32) {
         ui.painter().text(
             mr.center(),
             egui::Align2::CENTER_CENTER,
-            format!("»{}", n - shown),
+            if shown < n { format!("»{}", n - shown) } else { "»".into() },
             FontId::proportional(crate::theme::Tokens::get().font_body),
             t.app_bar_text,
         );
         let id = egui::Id::new("sc_doc_more");
-        if mresp.clone().on_hover_text(crate::i18n::tr_label("All open designs")).clicked() {
+        let tooltip = if compact_pages { app.tr("ui.project_pages.more") } else { crate::i18n::tr_label("All open designs") };
+        if mresp.clone().on_hover_text(tooltip).clicked() {
             ui.ctx().data_mut(|d| d.insert_temp(id, !d.get_temp::<bool>(id).unwrap_or(false)));
         }
         if ui.ctx().data(|d| d.get_temp::<bool>(id).unwrap_or(false)) {
@@ -817,6 +927,17 @@ pub fn tabs(app: &mut SolveApp, ui: &mut egui::Ui, r: Rect, x0: f32, x1: f32) {
                 .order(egui::Order::Foreground)
                 .show(ui.ctx(), |ui| {
                     crate::context_menu::menu_frame(ui, |ui| {
+                        if compact_pages {
+                            ui.strong(app.tr("ui.project_pages.title"));
+                            for (page, label, _) in PAGES {
+                                let row = ui_kit::list_picker(ui, &format!("workspace:{page}"), label, !app.home.open && app.ui.project_page == page);
+                                crate::scenario::publish_handle(&format!("project:{page}"), row.rect.center());
+                                if row.clicked() {
+                                    project_pick = Some(page);
+                                }
+                            }
+                            ui.separator();
+                        }
                         for (i, (name, dirty)) in info.iter().enumerate() {
                             let label = format!("{name}{}", if *dirty { " •" } else { "" });
                             if ui_kit::list_picker(ui, &format!("document:{i}"), &label, i == app.docs.active).clicked() {
@@ -826,7 +947,7 @@ pub fn tabs(app: &mut SolveApp, ui: &mut egui::Ui, r: Rect, x0: f32, x1: f32) {
                     })
                 });
             let pressed_outside = ui.ctx().input(|i| i.pointer.any_pressed()) && !resp.response.contains_pointer() && !mresp.contains_pointer();
-            if pick.is_some() || pressed_outside {
+            if pick.is_some() || project_pick.is_some() || pressed_outside {
                 ui.ctx().data_mut(|d| d.insert_temp(id, false));
             }
         }
@@ -842,6 +963,9 @@ pub fn tabs(app: &mut SolveApp, ui: &mut egui::Ui, r: Rect, x0: f32, x1: f32) {
                     let mut chosen = None;
                     for (id, label) in items {
                         let mut item = crate::context_menu::Item::action(id, label, "");
+                        if id == "ui.closeTab" && i == app.docs.active {
+                            item = item.key("Ctrl+W");
+                        }
                         item.enabled = id != "ui.closeOtherTabs" || n > 1;
                         let top = ui.cursor().top();
                         let row = crate::context_menu::list_row(ui, &item);
@@ -900,6 +1024,23 @@ pub fn tabs(app: &mut SolveApp, ui: &mut egui::Ui, r: Rect, x0: f32, x1: f32) {
             }
         }
     }
+    if idle && let Some(page) = project_pick {
+        activate_project_page(app, page);
+    }
+}
+
+fn activate_project_page(app: &mut SolveApp, page: &str) {
+    app.home.open = false;
+    app.ui.engineering_dialog = None;
+    match page {
+        "parameters" => app.start("worksheet.open"),
+        "fem" => app.ui.tab = "FEM / ROM".into(),
+        "mks" => app.ui.tab = "MBS".into(),
+        _ => {
+            let _ = app.run("studio.view", json!({"page":"cad"}));
+        }
+    }
+    app.ui.project_page = page.into();
 }
 
 /// The place among the shown tabs (`first..`, `widths` wide in strip order from `x0`) for
@@ -1042,6 +1183,8 @@ pub fn answer_prompt(app: &mut SolveApp, answer: Answer) {
             app.docs.closing = None;
             app.docs.quitting = None;
             app.docs.batch = None;
+            // The tab left in front was shown on the way without reading what it missed.
+            crate::linked_source::update_changed(app);
         }
     }
     quit_step(app);
@@ -1058,12 +1201,14 @@ pub(crate) fn saved_for_close(app: &mut SolveApp) {
     if app.docs.quitting.is_some() {
         if !saved {
             app.docs.quitting = None;
+            crate::linked_source::update_changed(app);
         }
     } else if saved {
         close(app, app.docs.active, true);
     } else {
-        // Save As cancelled: the tabs not closed yet stay.
+        // Save As cancelled: the tabs not closed yet stay, the one in front reads what it missed.
         app.docs.batch = None;
+        crate::linked_source::update_changed(app);
     }
     quit_step(app);
     batch_step(app);
@@ -1203,6 +1348,29 @@ mod tests {
         assert!((first..first + shown).contains(&11), "the active tab stays visible");
         assert!(shown as f32 * w + 26.0 + 34.0 <= 600.0 + 0.5);
         assert_eq!(layout(12, 0, 600.0).0, 0);
+    }
+
+    #[test]
+    fn narrow_window_keeps_document_and_project_navigation_reachable() {
+        let mut h = crate::scenario::Harness::new();
+        for _ in 0..12 {
+            open_tab(&mut h.app, Session::default()).unwrap();
+        }
+        h.app.home.open = false;
+        h.call("ui.resize", json!({"width":640,"height":1000}));
+        h.frames(3);
+        let more = crate::scenario::handle_at("tab:overflow").expect("the overflow launcher is drawn");
+        assert!(h.ctx.content_rect().contains(more));
+        h.call("ui.move", json!({"x":more.x,"y":more.y}));
+        h.call("ui.click", json!({"x":more.x,"y":more.y}));
+        h.frames(3);
+        assert!(h.ctx.data(|d| d.get_temp::<bool>(egui::Id::new("sc_doc_more"))).unwrap_or(false));
+        let mks = crate::scenario::handle_at("project:mks").expect("the menu exposes the MKS workspace");
+        h.call("ui.move", json!({"x":mks.x,"y":mks.y}));
+        h.call("ui.click", json!({"x":mks.x,"y":mks.y}));
+        h.frames(3);
+        assert_eq!(h.app.ui.project_page, "mks");
+        assert!(!h.app.home.open);
     }
 
     /// Active and hovered document tabs keep the bar's light text readable in both themes.
@@ -1347,6 +1515,45 @@ mod tests {
         assert_eq!(drop_slot(260.0, 0.0, &[80.0, 200.0, 80.0], 0, 0), 2);
     }
 
+    /// #8565: Ctrl+Tab shows the tab to the right and Ctrl+Shift+Tab the one to the left, going
+    /// round at either end; both are commands with their keys on the Keyboard Shortcuts page, and
+    /// `engine.execute` switches the same way. A "save changes?" prompt keeps the tab shown.
+    #[test]
+    fn ctrl_tab_and_ctrl_shift_tab_go_round_the_design_tabs() {
+        let mut h = crate::scenario::Harness::new();
+        h.app.home.open = false;
+        for k in 1..3 {
+            open_tab(&mut h.app, Session::default()).unwrap();
+            for _ in 0..k {
+                h.app.run("solid.sphere", json!({"diameter": 4})).unwrap();
+            }
+        }
+        h.frames(2);
+        assert_eq!((h.app.docs.active, h.app.session.doc.features.len()), (2, 2));
+        let press = |h: &mut crate::scenario::Harness, shift: bool| {
+            h.call("ui.key", json!({"key": "Tab", "cmd": true, "shift": shift}));
+            h.frames(2);
+            (h.app.docs.active, h.app.session.doc.features.len())
+        };
+        assert_eq!(press(&mut h, false), (0, 0), "after the last tab, the first");
+        assert_eq!(press(&mut h, false), (1, 1));
+        assert_eq!(press(&mut h, true), (0, 0));
+        assert_eq!(press(&mut h, true), (2, 2), "before the first tab, the last");
+        assert_eq!(crate::keymap::effective(&h.app, "view.next_tab").as_deref(), Some("Ctrl+Tab"));
+        assert_eq!(crate::keymap::effective(&h.app, "view.previous_tab").as_deref(), Some("Ctrl+Shift+Tab"));
+        assert_eq!(h.call("engine.execute", json!({"command": "view.next_tab"}))["ok"], true);
+        assert_eq!(h.app.docs.active, 0);
+        assert_eq!(h.call("engine.execute", json!({"command": "view.previous_tab"}))["ok"], true);
+        assert_eq!(h.app.docs.active, 2);
+        control(&mut h.app, &json!({"action": "close"}));
+        assert_eq!(h.app.docs.closing, Some(2), "the unsaved design asks first");
+        assert_eq!(press(&mut h, false).0, 2, "the asking tab stays shown");
+        control(&mut h.app, &json!({"answer": "cancel"}));
+        let mut one = app();
+        cycle(&mut one, true);
+        assert_eq!((one.docs.active, one.docs.count()), (0, 1), "a single design: nothing to go to");
+    }
+
     /// #3187: dragging a tab along the strip drops it where it is released; a drag mostly down
     /// the window (it moves the window) or one Escape cancelled leaves the order as it was.
     #[test]
@@ -1389,6 +1596,37 @@ mod tests {
         h.app.synthetic.extend([escape, egui::Event::PointerMoved(t1), button(t1, false)]);
         h.frames(16);
         assert_eq!(h.app.docs.active, 2, "Escape put it back");
+    }
+
+    /// #5366: Ctrl+W closes the design shown: a saved one at once (the last one leaves the start
+    /// page), an unsaved one after "save changes?", and on the start page it does nothing (the
+    /// browser closes its tab there).
+    #[test]
+    fn ctrl_w_closes_the_design_shown() {
+        let mut h = crate::scenario::Harness::new();
+        h.app.home.open = false;
+        h.app.run("solid.box", json!({"length": 10, "width": 10, "height": 10})).unwrap();
+        new_design(&mut h.app);
+        h.app.run("solid.sphere", json!({"diameter": 8})).unwrap();
+        h.app.session.mark_saved();
+        assert_eq!(h.app.docs.count(), 2);
+        h.frames(2);
+        h.step(&json!({"key": "W", "cmd": true})).unwrap();
+        h.frames(2);
+        assert_eq!((h.app.docs.count(), h.app.docs.closing), (1, None), "the saved design closed without asking");
+        assert!(!h.app.home.open, "the other design is shown");
+
+        h.step(&json!({"key": "W", "cmd": true})).unwrap();
+        h.frames(2);
+        assert_eq!((h.app.docs.count(), h.app.docs.closing), (1, Some(0)), "the unsaved one asks first");
+        answer_prompt(&mut h.app, Answer::DontSave);
+        assert!(active_is_blank(&h.app) && h.app.home.open, "the last one closed: the start page");
+
+        let revision = h.app.session.revision;
+        h.step(&json!({"key": "W", "cmd": true})).unwrap();
+        h.frames(2);
+        assert_eq!((h.app.docs.closing, h.app.session.revision), (None, revision), "the start page has nothing to close");
+        assert!(h.app.home.open);
     }
 
     #[test]

@@ -1,0 +1,11 @@
+{
+  "passed": true,
+  "samples_before": 21,
+  "samples_after": 1001,
+  "common_sample_max_error": 0.0,
+  "coarse_seconds": 2.473463900038041,
+  "dense_seconds": 3.171017699991353,
+  "observed_replay_updates_per_second": 104.25406830243226,
+  "drag_drop_source": true,
+  "fastener_entries": 11
+}

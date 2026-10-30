@@ -1,0 +1,481 @@
+{
+  "version": 4,
+  "checked": "2026-10-29",
+  "entries": [
+    {
+      "id": "S355_16",
+      "name": "S355JR",
+      "condition": "3 <= t <= 16 mm; hot rolled",
+      "source": "https://www.metinvestholding.com/en/products/steel-grades/s355jr",
+      "kind": "minimum strengths; upper limit explicitly labelled",
+      "values": [
+        {
+          "name": "Re_min",
+          "value": 355,
+          "unit": "MPa"
+        },
+        {
+          "name": "Rm_min",
+          "value": 470,
+          "unit": "MPa"
+        },
+        {
+          "name": "Rm_max",
+          "value": 630,
+          "unit": "MPa"
+        }
+      ],
+      "category": "Werkstoffe"
+    },
+    {
+      "id": "S355_40",
+      "name": "S355JR",
+      "condition": "16 < t <= 40 mm; hot rolled",
+      "source": "https://www.metinvestholding.com/en/products/steel-grades/s355jr",
+      "kind": "minimum strengths; upper limit explicitly labelled",
+      "values": [
+        {
+          "name": "Re_min",
+          "value": 345,
+          "unit": "MPa"
+        },
+        {
+          "name": "Rm_min",
+          "value": 470,
+          "unit": "MPa"
+        },
+        {
+          "name": "Rm_max",
+          "value": 630,
+          "unit": "MPa"
+        }
+      ],
+      "category": "Werkstoffe"
+    },
+    {
+      "id": "AW6082_T4",
+      "name": "EN AW-6082 T4",
+      "condition": "extruded profile; t <= 25 mm",
+      "source": "https://www.hydro.com/Document/Index?id=7824&name=Hydro+EN+AW+6082.PDF",
+      "kind": "minimum strengths; upper limit explicitly labelled",
+      "values": [
+        {
+          "name": "Rp02_min",
+          "value": 110,
+          "unit": "MPa"
+        },
+        {
+          "name": "Rm_min",
+          "value": 205,
+          "unit": "MPa"
+        }
+      ],
+      "category": "Werkstoffe"
+    },
+    {
+      "id": "AW6082_T6_5",
+      "name": "EN AW-6082 T6",
+      "condition": "open or hollow extruded profile; t <= 5 mm",
+      "source": "https://www.hydro.com/Document/Index?id=7824&name=Hydro+EN+AW+6082.PDF",
+      "kind": "minimum strengths; upper limit explicitly labelled",
+      "values": [
+        {
+          "name": "Rp02_min",
+          "value": 250,
+          "unit": "MPa"
+        },
+        {
+          "name": "Rm_min",
+          "value": 290,
+          "unit": "MPa"
+        }
+      ],
+      "category": "Werkstoffe"
+    },
+    {
+      "id": "AW6082_T6_15",
+      "name": "EN AW-6082 T6",
+      "condition": "open or hollow extruded profile; 5 < t <= 15 mm",
+      "source": "https://www.hydro.com/Document/Index?id=7824&name=Hydro+EN+AW+6082.PDF",
+      "kind": "minimum strengths; upper limit explicitly labelled",
+      "values": [
+        {
+          "name": "Rp02_min",
+          "value": 260,
+          "unit": "MPa"
+        },
+        {
+          "name": "Rm_min",
+          "value": 310,
+          "unit": "MPa"
+        }
+      ],
+      "category": "Werkstoffe"
+    },
+    {
+      "id": "STANDARD",
+      "name": "Standard gravity / reference defaults",
+      "condition": "Conventional standard gravity; not local measured gravity. Safety factors must be chosen for the applicable design method.",
+      "source": "https://www.bipm.org/en/committees/cg/cgpm/3-1901/resolution-2",
+      "kind": "defined reference",
+      "values": [
+        {
+          "name": "g_n",
+          "value": 9.80665,
+          "unit": "m/s^2"
+        }
+      ],
+      "category": "Technische Standardwerte"
+    },
+    {
+      "id": "SI_c",
+      "name": "Lichtgeschwindigkeit",
+      "category": "Naturkonstanten",
+      "condition": "Exact SI defining value; floating-point evaluation in calculation",
+      "source": "https://www.nist.gov/pml/special-publication-330/sp-330-section-2",
+      "kind": "defined SI constant",
+      "values": [
+        {
+          "name": "c",
+          "value": 299792458,
+          "unit": "m/s"
+        }
+      ]
+    },
+    {
+      "id": "SI_h",
+      "name": "Planck-Konstante",
+      "category": "Naturkonstanten",
+      "condition": "Exact SI defining value; floating-point evaluation in calculation",
+      "source": "https://www.nist.gov/pml/special-publication-330/sp-330-section-2",
+      "kind": "defined SI constant",
+      "values": [
+        {
+          "name": "h",
+          "value": 6.62607015e-34,
+          "unit": "J*s"
+        }
+      ]
+    },
+    {
+      "id": "SI_q_e",
+      "name": "Elementarladung",
+      "category": "Naturkonstanten",
+      "condition": "Exact SI defining value; floating-point evaluation in calculation",
+      "source": "https://www.nist.gov/pml/special-publication-330/sp-330-section-2",
+      "kind": "defined SI constant",
+      "values": [
+        {
+          "name": "q_e",
+          "value": 1.602176634e-19,
+          "unit": "C"
+        }
+      ]
+    },
+    {
+      "id": "SI_k_B",
+      "name": "Boltzmann-Konstante",
+      "category": "Naturkonstanten",
+      "condition": "Exact SI defining value; floating-point evaluation in calculation",
+      "source": "https://www.nist.gov/pml/special-publication-330/sp-330-section-2",
+      "kind": "defined SI constant",
+      "values": [
+        {
+          "name": "k_B",
+          "value": 1.380649e-23,
+          "unit": "J/K"
+        }
+      ]
+    },
+    {
+      "id": "SI_N_A",
+      "name": "Avogadro-Konstante",
+      "category": "Naturkonstanten",
+      "condition": "Exact SI defining value; floating-point evaluation in calculation",
+      "source": "https://www.nist.gov/pml/special-publication-330/sp-330-section-2",
+      "kind": "defined SI constant",
+      "values": [
+        {
+          "name": "N_A",
+          "value": 6.02214076e+23,
+          "unit": "1/mol"
+        }
+      ]
+    },
+    {
+      "id": "M6",
+      "name": "M6 - Bohrungskennwerte",
+      "category": "Schrauben",
+      "condition": "Standard metric thread; tapping and clearance diameters are manufacturer recommendations, not forming-tap pilot holes.",
+      "source": "https://www.trfastenings.com/Knowledge-Base/Engineering-Data/tapping-sizes-and-clearance-holes",
+      "kind": "manufacturer recommendation",
+      "values": [
+        {
+          "name": "thread_diameter",
+          "value": 6,
+          "unit": "mm"
+        },
+        {
+          "name": "tap_drill_diameter",
+          "value": 5,
+          "unit": "mm"
+        },
+        {
+          "name": "clearance_hole_diameter",
+          "value": 6.6,
+          "unit": "mm"
+        }
+      ]
+    },
+    {
+      "id": "M8",
+      "name": "M8 - Bohrungskennwerte",
+      "category": "Schrauben",
+      "condition": "Standard metric thread; tapping and clearance diameters are manufacturer recommendations, not forming-tap pilot holes.",
+      "source": "https://www.trfastenings.com/Knowledge-Base/Engineering-Data/tapping-sizes-and-clearance-holes",
+      "kind": "manufacturer recommendation",
+      "values": [
+        {
+          "name": "thread_diameter",
+          "value": 8,
+          "unit": "mm"
+        },
+        {
+          "name": "tap_drill_diameter",
+          "value": 6.8,
+          "unit": "mm"
+        },
+        {
+          "name": "clearance_hole_diameter",
+          "value": 9,
+          "unit": "mm"
+        }
+      ]
+    },
+    {
+      "id": "M10",
+      "name": "M10 - Bohrungskennwerte",
+      "category": "Schrauben",
+      "condition": "Standard metric thread; tapping and clearance diameters are manufacturer recommendations, not forming-tap pilot holes.",
+      "source": "https://www.trfastenings.com/Knowledge-Base/Engineering-Data/tapping-sizes-and-clearance-holes",
+      "kind": "manufacturer recommendation",
+      "values": [
+        {
+          "name": "thread_diameter",
+          "value": 10,
+          "unit": "mm"
+        },
+        {
+          "name": "tap_drill_diameter",
+          "value": 8.5,
+          "unit": "mm"
+        },
+        {
+          "name": "clearance_hole_diameter",
+          "value": 11,
+          "unit": "mm"
+        }
+      ]
+    },
+    {
+      "id": "M2",
+      "name": "M2 - Bohrungskennwerte",
+      "category": "Schrauben",
+      "condition": "Metric coarse thread; cutting-tap drill and clearance recommendations, not forming-tap holes or a strength certification.",
+      "source": "https://www.trfastenings.com/Knowledge-Base/Engineering-Data/tapping-sizes-and-clearance-holes",
+      "kind": "manufacturer recommendation",
+      "values": [
+        {
+          "name": "thread_diameter",
+          "value": 2,
+          "unit": "mm"
+        },
+        {
+          "name": "tap_drill_diameter",
+          "value": 1.6,
+          "unit": "mm"
+        },
+        {
+          "name": "clearance_hole_diameter",
+          "value": 2.4,
+          "unit": "mm"
+        }
+      ]
+    },
+    {
+      "id": "M3",
+      "name": "M3 - Bohrungskennwerte",
+      "category": "Schrauben",
+      "condition": "Metric coarse thread; cutting-tap drill and clearance recommendations, not forming-tap holes or a strength certification.",
+      "source": "https://www.trfastenings.com/Knowledge-Base/Engineering-Data/tapping-sizes-and-clearance-holes",
+      "kind": "manufacturer recommendation",
+      "values": [
+        {
+          "name": "thread_diameter",
+          "value": 3,
+          "unit": "mm"
+        },
+        {
+          "name": "tap_drill_diameter",
+          "value": 2.5,
+          "unit": "mm"
+        },
+        {
+          "name": "clearance_hole_diameter",
+          "value": 3.4,
+          "unit": "mm"
+        }
+      ]
+    },
+    {
+      "id": "M4",
+      "name": "M4 - Bohrungskennwerte",
+      "category": "Schrauben",
+      "condition": "Metric coarse thread; cutting-tap drill and clearance recommendations, not forming-tap holes or a strength certification.",
+      "source": "https://www.trfastenings.com/Knowledge-Base/Engineering-Data/tapping-sizes-and-clearance-holes",
+      "kind": "manufacturer recommendation",
+      "values": [
+        {
+          "name": "thread_diameter",
+          "value": 4,
+          "unit": "mm"
+        },
+        {
+          "name": "tap_drill_diameter",
+          "value": 3.3,
+          "unit": "mm"
+        },
+        {
+          "name": "clearance_hole_diameter",
+          "value": 4.5,
+          "unit": "mm"
+        }
+      ]
+    },
+    {
+      "id": "M5",
+      "name": "M5 - Bohrungskennwerte",
+      "category": "Schrauben",
+      "condition": "Metric coarse thread; cutting-tap drill and clearance recommendations, not forming-tap holes or a strength certification.",
+      "source": "https://www.trfastenings.com/Knowledge-Base/Engineering-Data/tapping-sizes-and-clearance-holes",
+      "kind": "manufacturer recommendation",
+      "values": [
+        {
+          "name": "thread_diameter",
+          "value": 5,
+          "unit": "mm"
+        },
+        {
+          "name": "tap_drill_diameter",
+          "value": 4.2,
+          "unit": "mm"
+        },
+        {
+          "name": "clearance_hole_diameter",
+          "value": 5.5,
+          "unit": "mm"
+        }
+      ]
+    },
+    {
+      "id": "M12",
+      "name": "M12 - Bohrungskennwerte",
+      "category": "Schrauben",
+      "condition": "Metric coarse thread; cutting-tap drill and clearance recommendations, not forming-tap holes or a strength certification.",
+      "source": "https://www.trfastenings.com/Knowledge-Base/Engineering-Data/tapping-sizes-and-clearance-holes",
+      "kind": "manufacturer recommendation",
+      "values": [
+        {
+          "name": "thread_diameter",
+          "value": 12,
+          "unit": "mm"
+        },
+        {
+          "name": "tap_drill_diameter",
+          "value": 10.2,
+          "unit": "mm"
+        },
+        {
+          "name": "clearance_hole_diameter",
+          "value": 13.5,
+          "unit": "mm"
+        }
+      ]
+    },
+    {
+      "id": "M16",
+      "name": "M16 - Bohrungskennwerte",
+      "category": "Schrauben",
+      "condition": "Metric coarse thread; cutting-tap drill and clearance recommendations, not forming-tap holes or a strength certification.",
+      "source": "https://www.trfastenings.com/Knowledge-Base/Engineering-Data/tapping-sizes-and-clearance-holes",
+      "kind": "manufacturer recommendation",
+      "values": [
+        {
+          "name": "thread_diameter",
+          "value": 16,
+          "unit": "mm"
+        },
+        {
+          "name": "tap_drill_diameter",
+          "value": 14,
+          "unit": "mm"
+        },
+        {
+          "name": "clearance_hole_diameter",
+          "value": 17.5,
+          "unit": "mm"
+        }
+      ]
+    },
+    {
+      "id": "M20",
+      "name": "M20 - Bohrungskennwerte",
+      "category": "Schrauben",
+      "condition": "Metric coarse thread; cutting-tap drill and clearance recommendations, not forming-tap holes or a strength certification.",
+      "source": "https://www.trfastenings.com/Knowledge-Base/Engineering-Data/tapping-sizes-and-clearance-holes",
+      "kind": "manufacturer recommendation",
+      "values": [
+        {
+          "name": "thread_diameter",
+          "value": 20,
+          "unit": "mm"
+        },
+        {
+          "name": "tap_drill_diameter",
+          "value": 17.5,
+          "unit": "mm"
+        },
+        {
+          "name": "clearance_hole_diameter",
+          "value": 22,
+          "unit": "mm"
+        }
+      ]
+    },
+    {
+      "id": "M24",
+      "name": "M24 - Bohrungskennwerte",
+      "category": "Schrauben",
+      "condition": "Metric coarse thread; cutting-tap drill and clearance recommendations, not forming-tap holes or a strength certification.",
+      "source": "https://www.trfastenings.com/Knowledge-Base/Engineering-Data/tapping-sizes-and-clearance-holes",
+      "kind": "manufacturer recommendation",
+      "values": [
+        {
+          "name": "thread_diameter",
+          "value": 24,
+          "unit": "mm"
+        },
+        {
+          "name": "tap_drill_diameter",
+          "value": 21,
+          "unit": "mm"
+        },
+        {
+          "name": "clearance_hole_diameter",
+          "value": 26,
+          "unit": "mm"
+        }
+      ]
+    }
+  ]
+}

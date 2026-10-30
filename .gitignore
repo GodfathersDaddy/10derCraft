@@ -15,3 +15,12 @@ mutants.out*/
 # external corpus downloads (cargo xtask external-corpus, #1397): fetched at test time,
 # hash-pinned in tests/external-corpus.toml; never commit case data
 /corpus/
+
+# Optional local 10derCraft runtimes and calculation outputs.
+/external/
+/output/
+/simulation/.venv/
+**/bin/
+**/obj/
+*.token
+*.lock.tmp

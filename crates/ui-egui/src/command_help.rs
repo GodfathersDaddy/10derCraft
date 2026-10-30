@@ -9,9 +9,24 @@ use crate::i18n;
 /// The commands that have help text. Each one needs a `help.<id>` message in the catalogs.
 pub const DOCUMENTED: &[&str] = &[
     "appearance.assign",
+    "component.finish_edit",
     "face.delete",
     "material.assign",
+    "mks.interface.open",
+    "occurrence.move",
     "parameters.change",
+    "pointcloud.insert",
+    "sketch.construction_line",
+    "sketch.construction_line.angle",
+    "sketch.construction_line.bisector",
+    "sketch.construction_line.horizontal",
+    "sketch.construction_line.parallel",
+    "sketch.construction_line.perpendicular",
+    "sketch.construction_line.tangent_at",
+    "sketch.construction_line.tangent_external",
+    "sketch.construction_line.tangent_two",
+    "sketch.construction_line.vertical",
+    "sketch.equation_curve",
     "solid.align",
     "solid.chamfer",
     "solid.combine",
@@ -36,6 +51,7 @@ pub const DOCUMENTED: &[&str] = &[
     "solid.sweep",
     "timeline.compute_all",
     "timeline.delete",
+    "timeline.play",
 ];
 
 /// The help for `command` in the current language, when it has any.
@@ -261,7 +277,6 @@ mod tests {
         "sketch.line3d",
         "sketch.mirror",
         "sketch.move",
-        "sketch.move3d",
         "sketch.offset",
         "sketch.paste",
         "sketch.pattern.circular",

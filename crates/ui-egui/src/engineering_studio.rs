@@ -44,7 +44,15 @@ pub fn start(app: &mut SolveApp, id: &str) -> bool {
         app.ui.project_page = "parameters".into();
         return true;
     }
+    if matches!(id, "studio.system.open" | "studio.fem.open" | "mks.model") {
+        app.home.open = false;
+        app.ui.engineering_dialog = None;
+        app.ui.project_page = if id == "studio.fem.open" { "fem" } else { "mks" }.into();
+        app.ui.tab = if id == "studio.fem.open" { "FEM / ROM" } else { "MBS" }.into();
+        return true;
+    }
     let page = match id {
+        "mks.interface.open" => "cad_mks",
         "studio.system.open" => "system",
         "mks.model" => "system",
         "studio.fem.open" => "fem",
@@ -242,6 +250,7 @@ fn interface_form(app: &mut SolveApp, ui: &mut egui::Ui) {
 pub fn show_dialogs(app: &mut SolveApp, ctx: &egui::Context) {
     let Some(page) = app.ui.engineering_dialog.clone() else { return };
     let title = match page.as_str() {
+        "cad_mks" => "CAD → MKS",
         "system" => "Mehrkörpermodell",
         "fem" => "FEM / ROM",
         "interfaces" => "Mechanischer Anschluss",
@@ -253,10 +262,11 @@ pub fn show_dialogs(app: &mut SolveApp, ctx: &egui::Context) {
     let open = true;
     let closed = crate::ui_kit::Window::new(egui::Id::new(("engineering_tool_window", &page)), "graph", title)
         .cards(if page == "interfaces" { 1.5 } else { 3. })
-        .page_rows(24.)
+        .page_rows(if page == "cad_mks" { 36. } else { 24. })
         .show_body(ctx, |ui| {
             scenario::publish_handle("studio:dialog:open", ui.min_rect().center());
             match page.as_str() {
+                "cad_mks" => crate::mks_interfaces_ui::show(app, ui),
                 "system" => system(app, ui),
                 "fem" => fem(app, ui),
                 "interfaces" => {
@@ -628,6 +638,56 @@ fn studies(app: &mut SolveApp, ui: &mut egui::Ui) {
             "Rohsignale und gefilterte Auswertung künftig getrennt speichern. Numerische Fehler werden nicht durch Filter als behoben bewertet.",
         );
     });
+}
+
+/// Project workspace, not a floating tool window.
+pub fn mks_workspace(app: &mut SolveApp, ui: &mut egui::Ui) {
+    let key = egui::Id::new(("mks_workspace_model", app.docs.active, app.session.path.clone()));
+    let cached = ui.ctx().data(|d| d.get_temp::<(u64, serde_json::Value)>(key));
+    let model = if let Some((_, v)) = cached.filter(|(r, _)| *r == app.session.revision) {
+        v
+    } else {
+        let v = app.session.execute("mks.model", &json!({})).unwrap_or_else(|e| json!({"error":e.to_string()}));
+        ui.ctx().data_mut(|d| d.insert_temp(key, (app.session.revision, v.clone())));
+        v
+    };
+    crate::mks_graph_ui::show(app, ui, &model);
+    show_dialogs(app, ui.ctx());
+}
+
+/// Compact FEM controls leave the regular, selectable CAD viewport below.
+pub fn fem_ribbon(app: &mut SolveApp, ui: &mut egui::Ui) {
+    let host = crate::ui_kit::Container::new(ui.ctx(), crate::ui_kit::Surface::Chrome);
+    host.edge("fem_workspace_ribbon", crate::ui_kit::Edge::Top)
+        .frame(host.edge_frame(Tokens::get().toolbar).inner_margin(Tokens::get().space_8))
+        .show(ui, |ui| {
+            let t = Tokens::get();
+            ui.set_min_height(t.form_button_height + t.space_16);
+            ui.spacing_mut().interact_size.y = t.form_button_height + t.space_8;
+            ui.horizontal_wrapped(|ui| {
+                ui.heading("FEM");
+                if crate::ui_kit::button(ui, app.tr("ui.analysis.interfaces"), crate::ui_kit::Button::Normal).clicked() {
+                    app.ui.engineering_dialog = Some("interfaces".into());
+                }
+                let run = crate::ui_kit::button(ui, app.tr("ui.analysis.solve"), crate::ui_kit::Button::Normal);
+                scenario::publish_handle("fem:workspace:solve", run.rect.center());
+                if run.clicked() {
+                    let _ = app.run("robot.fem.solve", json!({"elements":16}));
+                }
+                let results = crate::ui_kit::button(ui, app.tr("ui.analysis.results"), crate::ui_kit::Button::Normal);
+                scenario::publish_handle("fem:workspace:results", results.rect.center());
+                if results.clicked() {
+                    let key = egui::Id::new(("fem_results_visible", app.docs.active));
+                    ui.ctx().data_mut(|d| d.insert_temp(key, true));
+                }
+                let setup = crate::ui_kit::button(ui, app.tr("ui.analysis.setup"), crate::ui_kit::Button::Normal);
+                scenario::publish_handle("fem:workspace:setup", setup.rect.center());
+                if setup.clicked() {
+                    let key = egui::Id::new(("fem_results_visible", app.docs.active));
+                    ui.ctx().data_mut(|d| d.insert_temp(key, false));
+                }
+            });
+        });
 }
 
 #[cfg(test)]

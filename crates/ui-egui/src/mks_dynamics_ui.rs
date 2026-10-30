@@ -60,7 +60,7 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui, model: &Value) {
         .cloned()
         .unwrap_or_else(|| json!({}));
     let complex = stored["port_loads"].as_array().is_some_and(|a| a.len() > 1 || a.iter().any(|v| v["pressure_mpa"].is_number()))
-        || stored["drivers"].as_array().is_some_and(|a| a.len() > 1);
+        || stored["drivers"].as_array().is_some_and(|a| a.len() > 1 || a.iter().any(|d| d["profile"].as_str().is_some_and(|p| p != "cosine")));
     let mut draft = ui.data_mut(|d| d.get_temp::<Draft>(key)).unwrap_or_else(|| {
         let mut d = Draft::default();
         if model["blocks"].as_array().into_iter().flatten().filter(|b| b["grounded"] != true).count() > 5 {
@@ -126,7 +126,7 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui, model: &Value) {
             for (label,values) in [("Kraft [N]",&mut draft.force),("Moment [Nm]",&mut draft.moment)]{ui.horizontal(|ui|{ui.label(label);for v in values{ui.add(egui::DragValue::new(v));}});}
             ui.small("Druck und mehrere Lasten sind über mks.job.create/run verfügbar. Dieser Dialog legt einen neuen Lauf mit höchstens einer Kraft-/Momentenlast an.");
         }
-        if complex{ui.colored_label(Tokens::get().warning,"Gespeicherter Lauf enthält mehrere Antriebe/Lasten oder Druck. Über mks.job.run bearbeiten; der einfache Dialog überschreibt ihn nicht.");}
+        if complex{ui.colored_label(Tokens::get().warning,app.tr("ui.mks_ext.advanced_note"));}
         let r=ui.add_enabled(!complex,egui::Button::new("Dynamik lokal berechnen"));scenario::publish_handle("mks:dynamics:run",r.rect.center());
         if r.clicked(){
             let loads=if draft.use_load{json!([{"port":draft.port,"force_n":draft.force,"moment_nm":draft.moment}])}else{json!([])};

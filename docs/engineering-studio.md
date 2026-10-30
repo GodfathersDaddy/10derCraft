@@ -1,10 +1,21 @@
 # Engineering extension: native tabs and reference studies
 
-The extension retains the original SolidCraft application bar, CAD tabs, toolbar,
-browser, viewport and navigation. Additional tabs host MBS, FEM/ROM, interfaces,
-worksheet, variants, studies and load-path tools. Selecting a tab only changes the native ribbon. The central CAD viewport and original side panels remain unchanged. Engineering forms and block editors open in closable native-style windows only after an explicit tool action. There is no persistent engineering inspector. The worksheet button opens SolidCraft's original parameter dialog. The earlier separate studio shell
-was rejected and removed from current source. Its historical screenshots are not
-current UI evidence.
+The 10derCraft extension retains the native SolidCraft CAD shell and navigation.
+The project tabs are Start, Parameter, CAD, FEM and MKS. MKS now opens a full-page
+native rigid-block view with background-rendered pictures of the exact member
+bodies and placements. FEM opens a ribbon above the selectable CAD viewport;
+Results switches to an integrated, navigable deformation view. Selecting these
+tabs does not open a floating editor. Explicit interface/property actions can
+still open temporary forms. Parameter uses the embedded local worksheet.
+
+For prepared robot projects, `robot.fem.solve` computes the existing locked-actuator
+two-beam model. The read-only `robot.fem.snapshot` command exports a current result
+as PNG, with display amplification and camera recorded in its response. The same
+scene builder supplies the UI: cubic Hermite bending, axial displacement and
+cross-section rotation deform axially subdivided circular beam display meshes.
+Upstream beam displacement/rotation is superposed on the downstream beam.
+The scalar colours show unamplified displacement magnitude; non-beam CAD is an
+undeformed translucent reference. This is not solved solid FEM or flexible MKS.
 
 `--studio` creates an original generic robot using ordinary engine commands in an
 empty document. Normal launches also expose the extra tabs. No commercial CAD
@@ -38,9 +49,10 @@ is a single tip mass and analytic beam end stiffness, without distributed beam
 inertia. It is not a FEM/CMS ROM or flexible robot. SciPy performs local analytic
 section sizing with dimension bounds, deflection and applicability constraints.
 
-Assembly simulation, persistent engineering configuration, automatic rigid grouping,
-qualified surface couplings, FEM, CMS and automatic optimization feedback to CAD
-remain future work. Engineering state is session-only; the CAD format is unchanged.
+The paragraph above describes the older independent reference-study worker.
+The native suite separately has persistent project ports, rigid grouping, assembly
+dynamics and the limited robot beam FEM. Qualified CAD-surface FEM boundaries,
+general solid meshing/solving, CMS and flexible MKS feedback remain future work.
 External-result schema acceptance is not a physical validation of those results.
 
 ## Upstream integration

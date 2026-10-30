@@ -1,0 +1,18 @@
+{
+  "de": {
+    "cmd.mks.job.commit": "Berechnete Dynamik übernehmen",
+    "cmd.mks.result.pose": "Interpolierte Dynamikpose lesen",
+    "ui.mks_speed.changed": "Simulationseingaben wurden während der Berechnung geändert. Ergebnis verworfen.",
+    "ui.mks_speed.computing": "Simulation wird berechnet …",
+    "ui.mks_speed.discard": "Ergebnis verwerfen",
+    "ui.mks_speed.recompute": "Neu berechnen"
+  },
+  "en": {
+    "cmd.mks.job.commit": "Apply computed dynamics",
+    "cmd.mks.result.pose": "Read interpolated dynamics pose",
+    "ui.mks_speed.changed": "Simulation inputs changed while computing. Result discarded.",
+    "ui.mks_speed.computing": "Computing simulation …",
+    "ui.mks_speed.discard": "Discard result",
+    "ui.mks_speed.recompute": "Recalculate"
+  }
+}

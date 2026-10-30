@@ -1,2 +1,11 @@
 [alias]
 xtask = "run --package xtask --"
+
+# Keep the verified desktop/CI profile consistent: optimized modelling and
+# solver paths, fast compilation of the large native UI crate.
+[profile.ci]
+opt-level = 2
+debug = 0
+
+[profile.ci.package.solidcraft-ui-egui]
+opt-level = 0

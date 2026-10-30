@@ -1,0 +1,31 @@
+{
+  "passed": true,
+  "full_ci_completed": false,
+  "user_requested_short_completion": true,
+  "request": "Bring es zum ende muss noch nicht so gründlich seein ausser du warst schon fast fertig",
+  "recorded_at": "2026-10-30T13:52:56.149670+00:00",
+  "final_desktop_build": true,
+  "native_video_and_examples": true,
+  "native_robot_drag_workflow": true,
+  "passed_gates": [
+    "fmt",
+    "assets",
+    "icons",
+    "licences",
+    "lists",
+    "skills",
+    "layers",
+    "ui-containers",
+    "full all-target Clippy",
+    "Wasm check",
+    "doctests"
+  ],
+  "targeted_checks": [
+    "seven feature-walk tests without bless",
+    "unknown command suggestion",
+    "isolated design-watch disconnect",
+    "real narrow-window overflow and MKS click"
+  ],
+  "pending": "Complete native suite; full CI was stopped at user request during the first large action-matrix test. No full-suite pass claimed.",
+  "binary_sha256": "0b5deea0b0cf2cabc463c67662fc796dd742c5973b8a406e964c7a2513fc7d39"
+}

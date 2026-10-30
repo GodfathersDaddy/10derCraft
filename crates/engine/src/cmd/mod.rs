@@ -35,10 +35,16 @@ mod edit;
 mod face;
 mod features;
 mod features_more;
+mod join_pieces;
+pub(crate) use construct::{GeoForm, GeoFormError, REF as GEO_REF_FORMS, SKETCH_PART, geo_form, is_model_axis};
 pub(crate) use face::{FaceRefForm, face_ref_form};
 pub(crate) use features::profiles as feature_profiles;
-pub(crate) use features::{EdgeRefForm, axis_dir_form, edge_ref_form, sketch_key};
-pub use features::{auto_operation, extrude_reach};
+pub(crate) use features::{EdgeRefForm, PLANE_FORMS, axis_dir_form, axis_line_object, edge_ref_form, explicit_plane, plane_name_problem, sketch_key};
+pub use features::{auto_operation, extrude_reach, shown_scope};
+pub use join_pieces::{Addition, addition};
+pub use sketch::dimension_roles;
+pub(crate) use sketch::face::face_pick_form;
+pub use sketch_construction::{ConstructionLine, construction_line_choice, construction_line_mode, construction_line_solutions};
 pub use sketch_import::drawing_import_command;
 pub use sketch_modify::{extend_arc_preview, extend_preview, trim_piece};
 pub use view_dxf::sketch::exportable as view_dxf_exportable;
@@ -61,8 +67,10 @@ mod mesh;
 mod metadata;
 pub(crate) mod motion;
 mod parts;
+mod point_cloud;
 mod script;
 mod section;
+pub mod settings;
 pub(crate) use measure_sel::{measure_items, shape_of};
 pub(crate) use measure_shape::Shape;
 #[cfg(test)]
@@ -75,6 +83,10 @@ mod render_ui;
 #[cfg(test)]
 mod script_tests;
 mod sheet;
+pub(crate) use sheet::{
+    FlangeType, ThenStep, flange_edge, flange_edge_list, flange_position, flange_type, fold_points, fold_position, perforation_pattern, sheet_points,
+    then_list,
+};
 mod silhouette;
 mod sketch;
 pub(crate) use sketch::author_path_for_rebind;
@@ -85,9 +97,14 @@ mod gear_projects;
 mod involute;
 mod mechanics;
 mod mks;
+mod mks_diagram;
+mod mks_interfaces;
+mod mks_library;
 mod mks_local;
 mod mks_mass;
+mod mks_replay;
 mod mks_result_export;
+mod mks_signals;
 mod mks_simulation;
 mod robot;
 mod robot_fem;
@@ -95,13 +112,16 @@ mod sketch_3d;
 mod sketch_canvas;
 pub mod sketch_clipboard;
 mod sketch_constraints;
+mod sketch_construction;
 mod sketch_create;
 mod sketch_ends;
+mod sketch_equation;
 mod sketch_freeform;
 mod sketch_import;
 mod sketch_inspect;
 mod sketch_modify;
 mod sketch_project;
+mod sketch_store;
 mod studio;
 mod suite_examples;
 mod surface;
@@ -110,10 +130,14 @@ mod surface_boundary;
 mod surface_match;
 mod view_dxf;
 mod view_navigation;
+pub use mks_replay::{AssemblyReplay, prepare as prepare_assembly_replay};
 pub use mks_result_export::assembly_result_scene;
+pub use robot_fem::result_scene as robot_fem_result_scene;
 mod planetary;
 mod worksheet;
 mod worksheet_calcpad;
+mod worksheet_families;
+mod worksheet_inline;
 mod worksheet_references;
 mod worksheet_variants;
 
@@ -234,7 +258,12 @@ impl CommandSpec {
     /// undo step and the evaluation).
     pub(crate) fn run_nested(&self, s: &mut Session, p: &Value) -> Result<Value> {
         (self.enabled)(s).map_err(|why| crate::EngineError::Disabled(self.id.to_string(), why))?;
-        (self.run)(s, p)
+        let r = (self.run)(s, p);
+        // A parameter error that did not name the command names it here (see `Session::execute`).
+        match r {
+            Err(crate::EngineError::BadParams { cmd, msg }) if cmd.is_empty() => Err(crate::EngineError::BadParams { cmd: self.id.to_string(), msg }),
+            other => other,
+        }
     }
     pub fn info(&self, s: &Session) -> CommandInfo {
         let e = (self.enabled)(s);
@@ -291,12 +320,15 @@ pub fn command_specs() -> Vec<&'static CommandSpec> {
     let mut v: Vec<&'static CommandSpec> = Vec::new();
     v.extend(sketch::COMMANDS.iter());
     v.extend(sketch_create::COMMANDS.iter());
+    v.extend(sketch_construction::COMMANDS.iter());
+    v.extend(sketch_equation::COMMANDS.iter());
     v.extend(sketch_constraints::COMMANDS.iter());
     v.extend(sketch_import::COMMANDS.iter());
     v.extend(sketch_inspect::COMMANDS.iter());
     v.extend(sketch_ends::COMMANDS.iter());
     v.extend(sketch_canvas::COMMANDS.iter());
     v.extend(canvas_sketch::COMMANDS.iter());
+    v.extend(point_cloud::COMMANDS.iter());
     v.extend(sketch_3d::COMMANDS.iter());
     v.extend(surface_analysis::COMMANDS.iter());
     v.extend(surface_boundary::COMMANDS.iter());
@@ -338,16 +370,24 @@ pub fn command_specs() -> Vec<&'static CommandSpec> {
     v.extend(section::COMMANDS.iter());
     v.extend(view_navigation::COMMANDS.iter());
     v.extend(view_dxf::COMMANDS.iter());
+    v.extend(settings::COMMANDS.iter());
     v.extend(diagnostics::COMMANDS.iter());
     v.extend(render::COMMANDS.iter());
     v.extend(studio::COMMANDS.iter());
     v.extend(worksheet::COMMANDS.iter());
+    v.extend(worksheet_families::COMMANDS.iter());
+    v.extend(worksheet_inline::COMMANDS.iter());
     v.extend(involute::COMMANDS.iter());
     v.extend(gear::COMMANDS.iter());
     v.extend(mechanics::COMMANDS.iter());
     v.extend(mks::COMMANDS.iter());
+    v.extend(mks_diagram::COMMANDS.iter());
+    v.extend(mks_interfaces::COMMANDS.iter());
+    v.extend(mks_library::COMMANDS.iter());
     v.extend(mks_simulation::COMMANDS.iter());
+    v.extend(mks_signals::COMMANDS.iter());
     v.extend(mks_result_export::COMMANDS.iter());
+    v.extend(mks_replay::COMMANDS.iter());
     v.extend(robot::COMMANDS.iter());
     v.extend(suite_examples::COMMANDS.iter());
     v.extend(planetary::COMMANDS.iter());

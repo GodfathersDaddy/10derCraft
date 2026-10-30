@@ -1,0 +1,16 @@
+{
+  "en": {
+    "ui.mks_quality.changed": "Inputs changed: recompute before playback",
+    "ui.mks_quality.fastener_family": "Create editable Fastener family",
+    "ui.mks_quality.family_note": "Edit and select Fastener under Custom tables. Existing families are preserved; references are enabled explicitly.",
+    "ui.mks_quality.fine": "Fine output (recompute)",
+    "ui.mks_quality.samples": "output points"
+  },
+  "de": {
+    "ui.mks_quality.changed": "Eingaben geändert: vor Wiedergabe neu berechnen",
+    "ui.mks_quality.fastener_family": "Bearbeitbare Fastener-Familie anlegen",
+    "ui.mks_quality.family_note": "Fastener unter Eigene Tabellen bearbeiten und auswählen. Bestehende Familien bleiben erhalten; Referenzen ausdrücklich auswählen.",
+    "ui.mks_quality.fine": "Feine Ausgabe (neu berechnen)",
+    "ui.mks_quality.samples": "Ausgabepunkte"
+  }
+}

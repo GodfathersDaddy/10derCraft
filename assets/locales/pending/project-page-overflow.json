@@ -1,0 +1,10 @@
+{
+  "de": {
+    "ui.project_pages.more": "Arbeitsbereiche und offene Projekte",
+    "ui.project_pages.title": "Arbeitsbereiche"
+  },
+  "en": {
+    "ui.project_pages.more": "Workspaces and open projects",
+    "ui.project_pages.title": "Workspaces"
+  }
+}

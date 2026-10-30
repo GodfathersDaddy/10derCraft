@@ -17,6 +17,7 @@ permissions:
 
 jobs:
   regenerate:
+    if: ${{ github.repository == 'tangency-labs/solidcraft' }}
     name: Regenerate FreeCAD expected values
     runs-on: ubuntu-24.04
     timeout-minutes: 60

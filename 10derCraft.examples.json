@@ -1,0 +1,113 @@
+{
+  "schema": "10dercraft.examples/1",
+  "examples": [
+    {
+      "id": "robot-drag-workflow",
+      "title": "Roboter – Drag-and-drop und feine Simulation",
+      "path": "examples/projects/Roboter-DragDrop-Workflow.solidcraft",
+      "description": "Native Gelenke, unabhängige Quelle, Sensorleitung, 8 kg Nutzlast, 1001 Ausgabepunkte"
+    },
+    {
+      "id": "robot-parametric-large-motion",
+      "title": "Roboter – parametrisiert und große Bewegung",
+      "path": "examples/projects/Roboter-Grosse-Bewegung-Fein.solidcraft",
+      "description": "Lokale Berechnung, CAD-Flächenanschlüsse mit Beschriftung, sechs Sinusquellen und 8 kg Nutzlast"
+    },
+    {
+      "id": "robot-control",
+      "title": "Roboter - Bewegungssteuerung und Gelenksensoren",
+      "path": "examples/projects/Roboter-CAD-MKS-Workflow.solidcraft",
+      "description": "Aus CAD abgeleitete Körper und Gelenke, unabhängige Quellen, getrennte Messleitungen und 3D-Wiedergabe"
+    },
+    {
+      "id": "cad-mks-workflow",
+      "title": "CAD → MKS - Schnittstellen und Sensoren",
+      "path": "examples/projects/CAD-Schnittstellen-MKS.solidcraft",
+      "description": "Flächengebundene Anschlüsse, natives CAD-Gelenk, Bewegungsquelle, Sensor und Nutzlast"
+    },
+    {
+      "id": "mks-wires",
+      "title": "MKS - Quellen frei verbinden",
+      "path": "examples/projects/MKS-Frei-verdrahtete-Quelle.solidcraft",
+      "description": "Eine Quelle an zwei Gelenken, Parameterausdruck und gemeinsame Messausgänge"
+    },
+    {
+      "id": "mks-sources",
+      "title": "MKS - Bewegungsquellen und Sensoren",
+      "path": "examples/projects/MKS-Bewegungsquellen.solidcraft",
+      "description": "Einfaches Drehgelenk mit Anfangswinkel, Bewegungsprofil und messbaren Ausgängen"
+    },
+    {
+      "id": "weighted-pendulum",
+      "title": "Pendel - Ground, Revolute, Endgewicht",
+      "path": "examples/projects/Pendel-Feine-Ausgabe.solidcraft",
+      "description": "Freies Pendel, Bewegungseingang, Gelenkkraftsensor und Scope"
+    },
+    {
+      "id": "robot",
+      "title": "Roboterarm – alle Domänen",
+      "path": "examples/projects/Roboter-Alle-Domaenen.solidcraft",
+      "description": "Berechnung, CAD, sechsachsige MKS und Balken-FEM"
+    },
+    {
+      "id": "robot-light",
+      "title": "Roboterarm – Leichtbau",
+      "path": "examples/projects/Roboter-Leichtbau.solidcraft",
+      "description": "Querschnittsvariante mit angepasster Masse und Steifigkeit"
+    },
+    {
+      "id": "planetary",
+      "title": "Planetengetriebe – KUE",
+      "path": "examples/projects/KUE-Planetenstufe-bearbeitbar.solidcraft",
+      "description": "Lokale Berechnung, native Evolventen und bewegliche Baugruppe"
+    },
+    {
+      "id": "math-cad",
+      "title": "Berechnung treibt CAD",
+      "path": "examples/projects/Calcpad-Varianten-CAD.solidcraft",
+      "description": "Calcpad, Referenzen und Konstruktion aktualisieren"
+    },
+    {
+      "id": "gears",
+      "title": "Zahnradwerkzeug",
+      "path": "examples/projects/Zahnradwerkzeug.solidcraft",
+      "description": "Zahnrad-Vorauslegung und native gerade Evolventen"
+    },
+    {
+      "id": "ports",
+      "title": "Mechanische Schnittstellen",
+      "path": "examples/projects/Mechanische-Schnittstellen.solidcraft",
+      "description": "Kraft-/Momentschnittstellen und statische Lastpfade"
+    },
+    {
+      "id": "assembly",
+      "title": "Baugruppen-Blockmodell",
+      "path": "examples/projects/Baugruppe-MKS.solidcraft",
+      "description": "Native Gelenke, starre Blöcke und Schnittstellen"
+    },
+    {
+      "id": "mass",
+      "title": "Masseneigenschaften",
+      "path": "examples/projects/MKS-Masseneigenschaften.solidcraft",
+      "description": "CAD-Massen, Schwerpunkte und Trägheitstensoren"
+    },
+    {
+      "id": "drive",
+      "title": "CAD-Antriebsbewegung",
+      "path": "examples/projects/CAD-Pendel-Antrieb.solidcraft",
+      "description": "Parameterbasierter Antrieb mit gespeicherter Exudyn-Zeitreihe"
+    },
+    {
+      "id": "pendulum",
+      "title": "CAD-Pendel",
+      "path": "examples/projects/CAD-Pendel-Dynamik.solidcraft",
+      "description": "Schwerkraftdynamik mit numerischem Referenzvergleich"
+    },
+    {
+      "id": "variants",
+      "title": "Suite-Varianten",
+      "path": "examples/projects/Suite-Varianten.solidcraft",
+      "description": "Gemeinsames Variantenmanagement"
+    }
+  ]
+}

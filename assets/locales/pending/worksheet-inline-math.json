@@ -1,0 +1,28 @@
+{
+  "de": {
+    "cmd.worksheet.formula": "Formel direkt bearbeiten",
+    "cmd.worksheet.pin": "Berechnungsreferenz auswählen",
+    "cmd.worksheet.unit": "Ausgabeeinheit festlegen",
+    "ui.sheet_inline.arrange": "Anordnen",
+    "ui.sheet_inline.cad_changes": "Änderungen für CAD",
+    "ui.sheet_inline.digits": "Signifikante Stellen",
+    "ui.sheet_inline.edit_hint": "Ziehen verschiebt Felder, Doppelklick bearbeitet. = berechnet. Klasse. zeigt Eigenschaften: Pfeiltasten wechseln, Tab übernimmt. Referenzen nur mit Referenz auswählen.",
+    "ui.sheet_inline.name_error": "Bitte einen gültigen Variablennamen vor := eingeben.",
+    "ui.sheet_inline.pick_hint": "Eine Variable auf dem Blatt anklicken. Ausgewählte Referenzen sind hervorgehoben.",
+    "ui.sheet_inline.pick_reference": "Referenz auswählen",
+    "ui.sheet_inline.references": "Referenzen"
+  },
+  "en": {
+    "cmd.worksheet.formula": "Edit worksheet formula",
+    "cmd.worksheet.pin": "Select worksheet reference",
+    "cmd.worksheet.unit": "Set display unit",
+    "ui.sheet_inline.arrange": "Arrange",
+    "ui.sheet_inline.cad_changes": "Changes for CAD",
+    "ui.sheet_inline.digits": "Significant figures",
+    "ui.sheet_inline.edit_hint": "Drag moves fields; double-click edits. = evaluates. Class. suggests properties: arrows cycle, Tab accepts. References require Select reference.",
+    "ui.sheet_inline.name_error": "Enter a valid variable name before :=.",
+    "ui.sheet_inline.pick_hint": "Click a variable on the sheet. Selected references are highlighted.",
+    "ui.sheet_inline.pick_reference": "Select reference",
+    "ui.sheet_inline.references": "References"
+  }
+}

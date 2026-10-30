@@ -11,12 +11,41 @@ struct Part {
     com: Vec3,
     inertia: [[f64; 3]; 3],
 }
+#[derive(Clone)]
 struct Integrated {
     properties: MassProperties,
     volume_delta: f64,
     inertia_delta: f64,
     tolerance: f64,
     weld_tolerance: f64,
+}
+struct MassEntry {
+    body: solidcraft_kernel::Body,
+    display: std::sync::Arc<Mesh>,
+    integrated: Integrated,
+}
+/// Unit-density moments belong to immutable geometry, not to material or placement.
+/// Retain both identities so allocator reuse cannot make an old result look current.
+fn cached_integrate(body: &solidcraft_doc::ModelBody) -> Result<Integrated> {
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<std::collections::VecDeque<MassEntry>>> = std::sync::OnceLock::new();
+    let cache = CACHE.get_or_init(Default::default);
+    let display = body.mesh();
+    if let Ok(entries) = cache.lock()
+        && let Some(entry) = entries.iter().find(|e| e.body.solid_id() == body.body.solid_id() && std::sync::Arc::ptr_eq(&e.display, &display))
+    {
+        return Ok(entry.integrated.clone());
+    }
+    // Never hold a global lock during tessellation or numerical integration.
+    let integrated = integrate(&body.body)?;
+    if display.triangles.len() <= 300_000
+        && let Ok(mut entries) = cache.lock()
+    {
+        entries.push_back(MassEntry { body: body.body.clone(), display, integrated: integrated.clone() });
+        while entries.len() > 256 || entries.iter().map(|e| e.display.triangles.len()).sum::<usize>() > 300_000 {
+            entries.pop_front();
+        }
+    }
+    Ok(integrated)
 }
 fn integrate(body: &solidcraft_kernel::Body) -> Result<Integrated> {
     let size = body.size();
@@ -135,7 +164,7 @@ pub(super) fn calculate(s: &mut Session, p: &Value) -> Result<Value> {
             if !cache.contains_key(&key)
                 && let [body] = candidates.as_slice()
             {
-                cache.insert(key, integrate(&body.body).map_err(|e| e.to_string()));
+                cache.insert(key, cached_integrate(body).map_err(|e| e.to_string()));
             }
             let outcome = || -> Result<(Part, Value)> {
                 let body = match candidates.as_slice() {

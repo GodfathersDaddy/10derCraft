@@ -1,0 +1,304 @@
+//! Validated, immutable replay data. Geometry and trajectory parsing happen once,
+//! not once per displayed frame. Interpolation is presentation-only.
+use crate::schema::{TypedContract, output_schema_for};
+use crate::{Result, Session, params::bad};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use solidcraft_doc::{IDENTITY, Mat, apply_point, apply_vector, mat_mul};
+use solidcraft_geom::{Aabb3, Mesh, Vec3};
+use solidcraft_render::{Quat, Rgb};
+use std::sync::Arc;
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct PoseParams {
+    time_s: f64,
+}
+#[derive(Serialize, JsonSchema)]
+struct PoseTransform {
+    source: String,
+    world: Mat,
+}
+#[derive(Serialize, JsonSchema)]
+struct PoseReply {
+    time_s: f64,
+    transforms: Vec<PoseTransform>,
+    interpolation: String,
+    cad_changed: bool,
+}
+const POSE: TypedContract<PoseParams> = TypedContract::new();
+pub static COMMANDS: &[super::CommandSpec] =
+    &[super::CommandSpec::new("mks.result.pose", "Read Interpolated Dynamics Pose", crate::checked!("mks.result.pose", pose))
+        .icon("move")
+        .contract(&POSE)
+        .output(output_schema_for::<PoseReply>)
+        .noundo()];
+fn pose(s: &mut Session, p: &Value) -> Result<Value> {
+    let p: PoseParams = serde_json::from_value(p.clone()).map_err(|e| error(e.to_string()))?;
+    let replay = prepare(s)?;
+    if !p.time_s.is_finite() || p.time_s < replay.times[0] || p.time_s > *replay.times.last().ok_or_else(|| error("times missing"))? {
+        return Err(error("time must lie inside the stored trajectory"));
+    }
+    Ok(
+        json!({"time_s":p.time_s,"transforms":replay.meshes.iter().zip(replay.worlds(p.time_s)).map(|(mesh,world)|json!({"source":mesh.source,"world":world})).collect::<Vec<_>>(),
+        "interpolation":"joint_relative_slerp_anchor_preserving","cad_changed":false}),
+    )
+}
+
+pub struct ReplayMesh {
+    pub source: String,
+    pub mesh: Arc<Mesh>,
+    pub color: Rgb,
+    pub block: usize,
+    pub world: Mat,
+}
+struct Pose {
+    position: Vec3,
+    rotation: Quat,
+}
+struct Block {
+    com: Vec3,
+    poses: Vec<Pose>,
+}
+struct Link {
+    parent: usize,
+    child: usize,
+    pivot: Vec3,
+    slider: bool,
+}
+pub struct ReplayPort {
+    pub block: usize,
+    pub origin: Vec3,
+    pub axes: [Vec3; 3],
+}
+pub struct AssemblyReplay {
+    times: Vec<f64>,
+    pub meshes: Vec<ReplayMesh>,
+    pub ports: Vec<ReplayPort>,
+    pub bounds: Aabb3,
+    blocks: Vec<Block>,
+    links: Vec<Link>,
+}
+fn error(message: impl Into<String>) -> crate::EngineError {
+    bad("mks.replay", message)
+}
+fn vector(v: &Value) -> Result<Vec3> {
+    serde_json::from_value(v.clone()).map_err(|e| error(e.to_string()))
+}
+pub fn prepare(s: &mut Session) -> Result<AssemblyReplay> {
+    let state = s.execute("mks.job.state", &json!({}))?;
+    if state["result_current"] != true {
+        return Err(error("current dynamics result required"));
+    }
+    let graph = s.execute("mks.model", &json!({}))?;
+    let data = &state["data"];
+    let times: Vec<f64> = serde_json::from_value(data["result"]["times_s"].clone()).map_err(|e| error(e.to_string()))?;
+    if !(2..=1001).contains(&times.len()) || times.iter().any(|v| !v.is_finite()) || times.windows(2).any(|p| p[1] <= p[0]) {
+        return Err(error("invalid replay times"));
+    }
+    let native = s.model.state();
+    let mut out = AssemblyReplay { times, meshes: Vec::new(), ports: Vec::new(), blocks: Vec::new(), links: Vec::new(), bounds: Aabb3::EMPTY };
+    let mut triangles = 0;
+    for (index, block) in graph["blocks"].as_array().into_iter().flatten().enumerate() {
+        let mut item = Block { com: Vec3::ZERO, poses: Vec::new() };
+        if block["grounded"] != true {
+            let id = block["id"].as_str().ok_or_else(|| error("block id missing"))?;
+            let body = data["job"]["model"]["bodies"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .find(|b| b["id"] == id)
+                .ok_or_else(|| error("body definition missing"))?;
+            item.com = vector(&body["com_world_m"])? * 1000.;
+            let rows =
+                data["result"]["trajectories"][id].as_array().filter(|v| v.len() == out.times.len()).ok_or_else(|| error("trajectory missing"))?;
+            for row in rows {
+                let row: Vec<f64> = serde_json::from_value(row.clone()).map_err(|e| error(e.to_string()))?;
+                if row.len() != 12 || row.iter().any(|v| !v.is_finite()) {
+                    return Err(error("invalid pose"));
+                }
+                item.poses.push(Pose {
+                    position: Vec3::new(row[0], row[1], row[2]) * 1000.,
+                    rotation: Quat::from_basis(
+                        Vec3::new(row[3], row[6], row[9]),
+                        Vec3::new(row[4], row[7], row[10]),
+                        Vec3::new(row[5], row[8], row[11]),
+                    ),
+                });
+            }
+        }
+        out.blocks.push(item);
+        for placed in block["bodies"].as_array().into_iter().flatten() {
+            let body = native
+                .bodies
+                .iter()
+                .find(|b| Some(b.name.as_str()) == placed["source"].as_str() && Some(s.doc.model_body_component(b)) == placed["component"].as_u64())
+                .ok_or_else(|| error("CAD source missing"))?;
+            let mesh = body.mesh();
+            triangles += mesh.triangles.len();
+            if triangles > 100_000 || mesh.positions.len() > 500_000 {
+                return Err(error("replay geometry exceeds preview limit"));
+            }
+            let color = s
+                .doc
+                .body_color(body)
+                .map(|c| Rgb((c[0] * 255.).round() as u8, (c[1] * 255.).round() as u8, (c[2] * 255.).round() as u8))
+                .unwrap_or(crate::view::Palette::DEFAULT.body);
+            out.meshes.push(ReplayMesh {
+                source: body.name.clone(),
+                mesh,
+                color,
+                block: index,
+                world: serde_json::from_value(placed["world"].clone()).map_err(|e| error(e.to_string()))?,
+            });
+        }
+        for p in block["ports"].as_array().into_iter().flatten() {
+            out.ports.push(ReplayPort {
+                block: index,
+                origin: vector(&p["frame"]["origin"])?,
+                axes: [vector(&p["frame"]["axes"][0])?, vector(&p["frame"]["axes"][1])?, vector(&p["frame"]["axes"][2])?],
+            });
+        }
+    }
+    // Orient an arbitrary CAD joint order from ground towards the leaves.
+    let ids: std::collections::BTreeMap<_, _> =
+        graph["blocks"].as_array().into_iter().flatten().enumerate().filter_map(|(i, b)| b["id"].as_str().map(|id| (id.to_owned(), i))).collect();
+    let mut reached: std::collections::BTreeSet<_> = out.blocks.iter().enumerate().filter(|(_, b)| b.poses.is_empty()).map(|(i, _)| i).collect();
+    let mut pending = data["job"]["model"]["joints"].as_array().cloned().ok_or_else(|| error("joints missing"))?;
+    for _ in 0..out.blocks.len() {
+        let mut next = Vec::new();
+        for joint in pending {
+            let a = joint["a"].as_str().and_then(|id| ids.get(id)).copied().ok_or_else(|| error("parent body missing"))?;
+            let b = joint["b"].as_str().and_then(|id| ids.get(id)).copied().ok_or_else(|| error("follower body missing"))?;
+            let pair = if reached.contains(&a) && !reached.contains(&b) {
+                Some((a, b))
+            } else if reached.contains(&b) && !reached.contains(&a) {
+                Some((b, a))
+            } else {
+                None
+            };
+            if let Some((parent, child)) = pair {
+                out.links.push(Link { parent, child, pivot: vector(&joint["pivot_world_m"])? * 1000., slider: joint["kind"] == "slider" });
+                reached.insert(child);
+            } else {
+                next.push(joint);
+            }
+        }
+        pending = next;
+        if pending.is_empty() {
+            break;
+        }
+    }
+    if !pending.is_empty() || reached.len() != out.blocks.len() {
+        return Err(error("replay requires a rooted open tree"));
+    }
+    // Sweep local mesh boxes, not millions of transformed triangle vertices.
+    let boxes: Vec<_> = out.meshes.iter().map(|m| m.mesh.bounds()).collect();
+    for &time in &out.times {
+        let transforms = out.worlds(time);
+        for (bbox, world) in boxes.iter().zip(transforms) {
+            for x in [bbox.min.x, bbox.max.x] {
+                for y in [bbox.min.y, bbox.max.y] {
+                    for z in [bbox.min.z, bbox.max.z] {
+                        out.bounds.add(apply_point(&world, Vec3::new(x, y, z)));
+                    }
+                }
+            }
+        }
+    }
+    if out.bounds.is_empty() {
+        return Err(error("empty replay geometry"));
+    }
+    Ok(out)
+}
+impl AssemblyReplay {
+    pub fn times(&self) -> &[f64] {
+        &self.times
+    }
+    /// SLERP of joint-relative rotations; translations preserve joint anchors.
+    /// Stored solver samples and measured forces are never modified.
+    pub fn deltas(&self, time: f64) -> Vec<Mat> {
+        let time = if time.is_finite() { time } else { self.times[0] };
+        let a = self.times.partition_point(|t| *t <= time).saturating_sub(1).min(self.times.len() - 1);
+        let b = (a + 1).min(self.times.len() - 1);
+        let u = if a == b { 0. } else { ((time - self.times[a]) / (self.times[b] - self.times[a])).clamp(0., 1.) };
+        let mut matrices: Vec<Mat> = self
+            .blocks
+            .iter()
+            .map(|block| {
+                let (Some(p), Some(q)) = (block.poses.get(a), block.poses.get(b)) else { return IDENTITY };
+                let (x, y, z) = p.rotation.slerp(q.rotation, u).basis();
+                let mut matrix = IDENTITY;
+                for (i, v) in [x, y, z].iter().enumerate() {
+                    matrix[i] = [v.x, v.y, v.z, 0.];
+                }
+                let translation = p.position * (1. - u) + q.position * u - apply_vector(&matrix, block.com);
+                matrix[3] = [translation.x, translation.y, translation.z, 1.];
+                matrix
+            })
+            .collect();
+        if u > 0. && u < 1. {
+            let first = self.raw_deltas(a);
+            let last = self.raw_deltas(b);
+            for link in &self.links {
+                let parent = matrices[link.parent];
+                let relative =
+                    relative_rotation(&first[link.parent], &first[link.child]).slerp(relative_rotation(&last[link.parent], &last[link.child]), u);
+                let (x, y, z) = relative.basis();
+                let mut child = IDENTITY;
+                for (i, axis) in [x, y, z].iter().enumerate() {
+                    let v = apply_vector(&parent, *axis);
+                    child[i] = [v.x, v.y, v.z, 0.];
+                }
+                let offset = if link.slider {
+                    let local = |p: &Mat, c: &Mat| {
+                        let v = apply_point(c, link.pivot) - apply_point(p, link.pivot);
+                        Vec3::new(
+                            Vec3::new(p[0][0], p[0][1], p[0][2]).dot(v),
+                            Vec3::new(p[1][0], p[1][1], p[1][2]).dot(v),
+                            Vec3::new(p[2][0], p[2][1], p[2][2]).dot(v),
+                        )
+                    };
+                    apply_vector(
+                        &parent,
+                        local(&first[link.parent], &first[link.child]) * (1. - u) + local(&last[link.parent], &last[link.child]) * u,
+                    )
+                } else {
+                    Vec3::ZERO
+                };
+                let t = apply_point(&parent, link.pivot) + offset - apply_vector(&child, link.pivot);
+                child[3] = [t.x, t.y, t.z, 1.];
+                matrices[link.child] = child;
+            }
+        }
+        matrices
+    }
+    fn raw_deltas(&self, index: usize) -> Vec<Mat> {
+        self.blocks
+            .iter()
+            .map(|b| {
+                let Some(pose) = b.poses.get(index) else { return IDENTITY };
+                let (x, y, z) = pose.rotation.basis();
+                let mut m = IDENTITY;
+                for (i, v) in [x, y, z].iter().enumerate() {
+                    m[i] = [v.x, v.y, v.z, 0.];
+                }
+                let t = pose.position - apply_vector(&m, b.com);
+                m[3] = [t.x, t.y, t.z, 1.];
+                m
+            })
+            .collect()
+    }
+    pub fn worlds(&self, time: f64) -> Vec<Mat> {
+        let deltas = self.deltas(time);
+        self.meshes.iter().map(|m| mat_mul(deltas.get(m.block).unwrap_or(&IDENTITY), &m.world)).collect()
+    }
+}
+fn relative_rotation(parent: &Mat, child: &Mat) -> Quat {
+    let axes = parent[..3].iter().map(|v| Vec3::new(v[0], v[1], v[2])).collect::<Vec<_>>();
+    let local = |i: usize| {
+        let v = Vec3::new(child[i][0], child[i][1], child[i][2]);
+        Vec3::new(axes[0].dot(v), axes[1].dot(v), axes[2].dot(v))
+    };
+    Quat::from_basis(local(0), local(1), local(2))
+}

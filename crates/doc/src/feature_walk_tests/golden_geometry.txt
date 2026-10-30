@@ -24,6 +24,9 @@ fillet_spline
   moves: edges[0][0], edges[0][1], edges[0][2], style.start[0], style.start[1], style.start[2]
 chamfer
   moves: edges[0][0], edges[0][1], edges[0][2]
+involute_gear
+  moves: center[0], center[1], center[2]
+  placement: gear.x, gear.y, gear.z
 box
   moves: corner[0], corner[1], corner[2]
   placement: box.x, box.y, box.z

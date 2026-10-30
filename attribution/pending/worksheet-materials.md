@@ -1,0 +1,1 @@
+| assets/data/worksheet-materials.json | Original factual compilation for 10derCraft; per-entry primary source links: Metinvest, Hydro, BIPM, NIST and TR Fastenings, checked 2026-10-29 | Original project data structure; numerical facts, no third-party artwork or source code |

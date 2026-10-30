@@ -51,7 +51,7 @@ pub(super) fn execute(job: &Value) -> Result<Value> {
     let reader = std::thread::spawn(move || {
         let mut bytes = Vec::new();
         if let Some(stream) = output {
-            stream.take(2_000_001).read_to_end(&mut bytes)?;
+            stream.take(12 * 1024 * 1024 + 1).read_to_end(&mut bytes)?;
         }
         Ok::<_, std::io::Error>(bytes)
     });
@@ -92,8 +92,8 @@ pub(super) fn execute(job: &Value) -> Result<Value> {
     if status.is_none() {
         return Err(bad("mks.job.run", "local solver timed out after 30 s"));
     }
-    if bytes.len() > 2_000_000 {
-        return Err(bad("mks.job.run", "solver output exceeds 2 MB"));
+    if bytes.len() > 12 * 1024 * 1024 {
+        return Err(bad("mks.job.run", "solver output exceeds 12 MiB"));
     }
     let result: Value = serde_json::from_slice(&bytes).map_err(|e| bad("mks.job.run", format!("invalid solver result: {e}")))?;
     if !status.is_some_and(|s| s.success()) || result["status"] != "success" {

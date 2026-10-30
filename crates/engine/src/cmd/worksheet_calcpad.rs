@@ -21,23 +21,24 @@ pub fn calculate(s: &mut Session, p: &Value) -> Result<Value> {
     if source.len() > 128 * 1024 {
         return Err(bad("worksheet.calcpad.calculate", "source exceeds 128 KiB"));
     }
-    let result = local(&source)?;
+    let result = local(&source, &super::worksheet_inline::requests(s))?;
     if result["ok"] != true {
         return Err(bad("worksheet.calcpad.calculate", result["error"].as_str().unwrap_or("local calculation failed")));
     }
     let state = json!({"source":source,"evaluated_source":source,"dirty":false,"backend":"CalcpadCE",
         "results":result["results"],"html":result["html"]});
     s.doc_mut().metadata.set(solidcraft_doc::metadata::Owner::Design, CALCPAD, state.clone())?;
+    super::worksheet_inline::display_results(s, &result)?;
     Ok(state)
 }
 
 #[cfg(target_arch = "wasm32")]
-fn local(_: &str) -> Result<Value> {
+pub(super) fn local(_: &str, _: &Value) -> Result<Value> {
     Err(bad("worksheet.calcpad.calculate", "local Calcpad is available in the desktop application"))
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn local(source: &str) -> Result<Value> {
+pub(super) fn local(source: &str, units: &Value) -> Result<Value> {
     use std::{
         io::{Read, Write},
         process::{Command, Stdio},
@@ -58,7 +59,7 @@ fn local(source: &str) -> Result<Value> {
         command.creation_flags(0x08000000);
     }
     let mut child = command.spawn().map_err(|e| bad("worksheet.calcpad.calculate", e.to_string()))?;
-    let payload = serde_json::to_vec(&json!({"source":source})).map_err(|e| bad("worksheet.calcpad.calculate", e.to_string()))?;
+    let payload = serde_json::to_vec(&json!({"source":source,"units":units})).map_err(|e| bad("worksheet.calcpad.calculate", e.to_string()))?;
     let input = child.stdin.take();
     let output = child.stdout.take();
     let writer = std::thread::spawn(move || {

@@ -38,7 +38,7 @@ env:
 
 jobs:
   image:
-    if: ${{ !github.event.repository.private }}
+    if: ${{ github.repository == 'tangency-labs/solidcraft' && (!github.event.repository.private) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:

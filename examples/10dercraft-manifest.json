@@ -1,0 +1,92 @@
+[
+  {
+    "path": "examples/projects/Roboter-DragDrop-Workflow.solidcraft",
+    "sha256": "0f6bd46287a1708a6d2971788bc9b38e3b27d6f3e28d1268ba1ef7995dd88141",
+    "bytes": 1027056
+  },
+  {
+    "path": "examples/projects/Roboter-Grosse-Bewegung-Fein.solidcraft",
+    "sha256": "39651bf8c04101e421ee06303f4f901a085fa0a3683579c91bbcea094b3bb6ae",
+    "bytes": 1537852
+  },
+  {
+    "path": "examples/projects/Roboter-CAD-MKS-Workflow.solidcraft",
+    "sha256": "a9a3b6a68c93cecfc8c66fdab2aac6bd93fd83c9623f183119756527e3dafff0",
+    "bytes": 154523
+  },
+  {
+    "path": "examples/projects/CAD-Schnittstellen-MKS.solidcraft",
+    "sha256": "48a594850de2649b5d57f1846ace7b1208e0f44f57f5d134fa4f92ae7e52ae0f",
+    "bytes": 16663
+  },
+  {
+    "path": "examples/projects/MKS-Frei-verdrahtete-Quelle.solidcraft",
+    "sha256": "24eba26312b142e4c2ef2fbe0ab3d5abbb667069caa9d96860174471d81dafa7",
+    "bytes": 17948
+  },
+  {
+    "path": "examples/projects/MKS-Bewegungsquellen.solidcraft",
+    "sha256": "6a67e8de22e7e5d504d672f25572aeb2e387da249fba6be41948f404b070a8cf",
+    "bytes": 13760
+  },
+  {
+    "path": "examples/projects/Pendel-Feine-Ausgabe.solidcraft",
+    "sha256": "bbecc718cef4139555ca2d0505dffe049845940107232c1e75b061b7b13753d8",
+    "bytes": 181473
+  },
+  {
+    "path": "examples/projects/Roboter-Alle-Domaenen.solidcraft",
+    "sha256": "df98a3a4a6fce3e362ff344d1f45f563dd844bad4ccab4dca9152d65c19d07ef",
+    "bytes": 115015
+  },
+  {
+    "path": "examples/projects/Roboter-Leichtbau.solidcraft",
+    "sha256": "c977b1447754ac5676bfd7a35ac0cbf58e9c12c9403314b89f408491fba01326",
+    "bytes": 113177
+  },
+  {
+    "path": "examples/projects/KUE-Planetenstufe-bearbeitbar.solidcraft",
+    "sha256": "52f137df3f26fb13547146e7dc5ac5f10a95285c5346c576ef7870c2b54f08b2",
+    "bytes": 387564
+  },
+  {
+    "path": "examples/projects/Calcpad-Varianten-CAD.solidcraft",
+    "sha256": "14601d2f2f225cf75d2e4dd607946126bdc915f9dcf5730d873668bf82026a81",
+    "bytes": 9394
+  },
+  {
+    "path": "examples/projects/Zahnradwerkzeug.solidcraft",
+    "sha256": "d5b2126c0045aadad99db3135f7e807278786251cd738a2cb2842ea811a8877e",
+    "bytes": 302877
+  },
+  {
+    "path": "examples/projects/Mechanische-Schnittstellen.solidcraft",
+    "sha256": "5550892423f6074bfe7b5c8a17275eb31dbd7c7bbf20b56b6e76a02b787ee24c",
+    "bytes": 11693
+  },
+  {
+    "path": "examples/projects/Baugruppe-MKS.solidcraft",
+    "sha256": "58cd91af5e691d05be5419c8f8e97219699f9cb94c043435afc7250ab19dc8f8",
+    "bytes": 14692
+  },
+  {
+    "path": "examples/projects/MKS-Masseneigenschaften.solidcraft",
+    "sha256": "8877e78b46b6b4e05269e26fa6eaa5e2cf22fb02dceebdfc970bf93824ea2c6d",
+    "bytes": 8866
+  },
+  {
+    "path": "examples/projects/CAD-Pendel-Antrieb.solidcraft",
+    "sha256": "3c80e155f97f427a0bf374c18fdd70973f02a4f3badbe55ad4a44da26e834ca5",
+    "bytes": 10649
+  },
+  {
+    "path": "examples/projects/CAD-Pendel-Dynamik.solidcraft",
+    "sha256": "c762ec69223bcac7e6e749075125bd1be20d9c90e460e91ee0667de0b8d06746",
+    "bytes": 21605
+  },
+  {
+    "path": "examples/projects/Suite-Varianten.solidcraft",
+    "sha256": "8cdc55020dfa6b2f919463a0efae7c57db9ff16e2f4fb653d73d443c3982a916",
+    "bytes": 98389
+  }
+]

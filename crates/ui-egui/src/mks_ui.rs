@@ -1,10 +1,8 @@
 //! Native assembly block view. All reduction remains in the registered engine command.
 use crate::{SolveApp, scenario, theme::Tokens};
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
 
 pub fn show(app: &mut SolveApp, ui: &mut egui::Ui) {
-    ui.set_max_width(740.0_f32.min(ui.available_width()));
     let key = egui::Id::new(("native_mks_model", app.docs.active, app.session.path.clone()));
     let cached = ui.data_mut(|d| d.get_temp::<(u64, Value)>(key));
     let model = if let Some((_, v)) = cached.filter(|(r, _)| *r == app.session.revision) {
@@ -31,98 +29,8 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui) {
     ));
     scenario::publish_handle("mks:model", ui.min_rect().center());
     physical_properties(app, ui, key.with("mass"));
-    crate::mks_dynamics_ui::show(app, ui, &model);
-    egui::ScrollArea::both().id_salt("native_mks_canvas").max_height(330.).show(ui, |ui| {
-        let t = Tokens::get();
-        let columns = ((ui.available_width() / 260.).floor() as usize).clamp(1, 3).min(blocks.len().max(1));
-        let size = egui::vec2(columns as f32 * 260., blocks.len().div_ceil(columns) as f32 * 150.);
-        let (area, _) = ui.allocate_exact_size(size, egui::Sense::hover());
-        let painter = ui.painter_at(area);
-        let mut anchors = BTreeMap::new();
-        for (i, b) in blocks.iter().enumerate() {
-            let rect = egui::Rect::from_min_size(
-                area.min + egui::vec2((i % columns) as f32 * 260. + 10., (i / columns) as f32 * 150. + 20.),
-                egui::vec2(220., 108.),
-            );
-            anchors.insert(b["id"].as_str().unwrap_or(""), (rect.left_center(), rect.right_center()));
-        }
-        for j in joints {
-            let a = j["a"].as_str().and_then(|s| anchors.get(s));
-            let b = j["b"].as_str().and_then(|s| anchors.get(s));
-            if let (Some(a), Some(b)) = (a, b) {
-                let color = if j["connector_supported"] == true { t.accent } else { t.warning };
-                painter.line_segment([a.1, b.0], egui::Stroke::new(1.5, color));
-                painter.circle_filled(a.1, 4., color);
-                painter.circle_filled(b.0, 4., color);
-                painter.text(
-                    a.1.lerp(b.0, 0.5) + egui::vec2(0., -10.),
-                    egui::Align2::CENTER_CENTER,
-                    j["kind"].as_str().unwrap_or(""),
-                    egui::FontId::proportional(10.),
-                    color,
-                );
-            }
-        }
-        for b in blocks {
-            let id = b["id"].as_str().unwrap_or("");
-            if let Some((left, _)) = anchors.get(id) {
-                let rect = egui::Rect::from_min_size(*left - egui::vec2(0., 54.), egui::vec2(220., 108.));
-                painter.rect_filled(rect, 4., t.field);
-                painter.rect_stroke(
-                    rect,
-                    4.,
-                    egui::Stroke::new(1., if b["grounded"] == true { t.accent } else { t.border }),
-                    egui::StrokeKind::Inside,
-                );
-                let names = b["members"].as_array().into_iter().flatten().take(3).filter_map(|m| m["name"].as_str()).collect::<Vec<_>>().join(" + ");
-                let status = if b["grounded"] == true {
-                    "Fundament"
-                } else if b["connected_to_ground"] == false {
-                    "Frei / unverbunden"
-                } else {
-                    "Beweglich verbunden"
-                };
-                for (row, text) in [
-                    format!("{id} · {status}"),
-                    names,
-                    format!(
-                        "{} Körper · {} Kraftschnittstellen",
-                        b["bodies"].as_array().map_or(0, Vec::len),
-                        b["ports"].as_array().map_or(0, Vec::len)
-                    ),
-                ]
-                .iter()
-                .enumerate()
-                {
-                    painter.text(
-                        rect.min + egui::vec2(10., 18. + row as f32 * 25.),
-                        egui::Align2::LEFT_CENTER,
-                        text,
-                        egui::FontId::proportional(11.),
-                        t.text,
-                    );
-                }
-                for (i, p) in b["ports"].as_array().into_iter().flatten().take(3).enumerate() {
-                    let point = rect.min + egui::vec2(10. + i as f32 * 70., 92.);
-                    let port = p["port"]["id"].as_str().unwrap_or("");
-                    painter.circle_filled(point, 3., t.accent);
-                    painter.text(
-                        point + egui::vec2(7., 0.),
-                        egui::Align2::LEFT_CENTER,
-                        port.chars().take(9).collect::<String>(),
-                        egui::FontId::proportional(10.),
-                        t.text,
-                    );
-                    let hit = egui::Rect::from_center_size(point + egui::vec2(28., 0.), egui::vec2(65., 18.));
-                    scenario::publish_handle(&format!("mks:port:{port}"), hit.center());
-                    ui.interact(hit, ui.id().with(("mks_port", port)), egui::Sense::hover()).on_hover_text(format!(
-                        "{} · {} / {}\nPosition Welt [mm]: {}",
-                        port, p["port"]["support"], p["port"]["transfer"], p["frame"]["origin"]
-                    ));
-                }
-            }
-        }
-    });
+    ui.collapsing(app.tr("ui.analysis.dynamics"), |ui| crate::mks_dynamics_ui::show(app, ui, &model));
+    crate::mks_graph_ui::show(app, ui, &model);
     egui::ScrollArea::vertical().id_salt("native_mks_details").max_height(230.).show(ui, |ui| {
         for issue in model["issues"].as_array().into_iter().flatten() {
             ui.colored_label(Tokens::get().warning, format!("{}: {}", issue["kind"].as_str().unwrap_or(""), issue["message"].as_str().unwrap_or("")));
@@ -217,5 +125,106 @@ fn physical_properties(app: &mut SolveApp, ui: &mut egui::Ui, key: egui::Id) {
             });
             });
         scenario::publish_handle("mks:mass:details", details.header_response.rect.center());
+    }
+}
+
+#[derive(Clone)]
+struct BlockPicture {
+    revision: u64,
+    image: Option<egui::ColorImage>,
+    texture: Option<egui::TextureHandle>,
+}
+
+/// Native CAD geometry, exact placement path from mks.model; bounded background rendering.
+pub(super) fn block_picture(app: &SolveApp, ui: &mut egui::Ui, block: &Value, rect: egui::Rect) {
+    if cfg!(target_arch = "wasm32") {
+        return;
+    }
+    use solidcraft_engine::{
+        geom::Aabb3,
+        render::{Camera, Scene, SceneMesh, StandardView},
+    };
+    use std::sync::Arc;
+    let id = block["id"].as_str().unwrap_or("");
+    let key = egui::Id::new(("mks_block_picture", app.docs.active, app.session.path.clone(), id));
+    let busy = egui::Id::new("mks_block_picture_worker");
+    let revision = app.session.revision;
+    let old = ui.ctx().data(|d| d.get_temp::<BlockPicture>(key));
+    if let Some(mut cached) = old.filter(|c| c.revision == revision) {
+        if cached.texture.is_none()
+            && let Some(image) = cached.image.take()
+        {
+            cached.texture = Some(ui.ctx().load_texture(format!("mks-{id}"), image, egui::TextureOptions::LINEAR));
+            ui.ctx().data_mut(|d| d.insert_temp(key, cached.clone()));
+        }
+        if let Some(texture) = cached.texture {
+            ui.painter().image(texture.id(), rect, egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1., 1.)), egui::Color32::WHITE);
+            scenario::publish_handle(&format!("mks:block:picture:{id}"), rect.center());
+        }
+        return;
+    }
+    if ui.ctx().data(|d| d.get_temp::<bool>(busy)).unwrap_or(false) {
+        return;
+    }
+    // Oversized assemblies keep the named card; never tessellate an unbounded picture.
+    if block["bodies"].as_array().is_some_and(|b| b.len() > 100) {
+        return;
+    }
+    let state = app.session.model.state();
+    let mut scene = Scene::default();
+    let mut bounds = Aabb3::EMPTY;
+    let mut triangles = 0;
+    for placed in block["bodies"].as_array().into_iter().flatten() {
+        let Some(body) = state.bodies.iter().find(|b| {
+            Some(b.name.as_str()) == placed["source"].as_str() && Some(app.session.doc.model_body_component(b)) == placed["component"].as_u64()
+        }) else {
+            continue;
+        };
+        let Ok(world) = serde_json::from_value::<solidcraft_engine::doc::Mat>(placed["world"].clone()) else { continue };
+        let source = body.mesh();
+        triangles += source.triangles.len();
+        if triangles > 100_000 || source.positions.len() > 500_000 {
+            return;
+        }
+        let mut mesh = (*source).clone();
+        for p in &mut mesh.positions {
+            *p = solidcraft_engine::doc::apply_point(&world, *p);
+            bounds.add(*p);
+        }
+        for n in &mut mesh.normals {
+            *n = solidcraft_engine::doc::apply_vector(&world, *n);
+        }
+        // The miniature contains surfaces only; no untransformed source edges.
+        mesh.edges.clear();
+        let color = app
+            .session
+            .doc
+            .body_color(body)
+            .map(|c| solidcraft_engine::render::Rgb((c[0] * 255.).round() as u8, (c[1] * 255.).round() as u8, (c[2] * 255.).round() as u8))
+            .unwrap_or(solidcraft_engine::view::colors::BODY);
+        scene.meshes.push(SceneMesh::solid(Arc::new(mesh), color));
+    }
+    ui.ctx().data_mut(|d| d.insert_temp(key, BlockPicture { revision, image: None, texture: None }));
+    if bounds.is_empty() {
+        return;
+    }
+    let mut camera = Camera::default();
+    camera.set_view(StandardView::Iso);
+    camera.fit(&bounds);
+    scene.radius = bounds.diagonal().max(1.);
+    let ctx = ui.ctx().clone();
+    ctx.data_mut(|d| d.insert_temp(busy, true));
+    let worker_ctx = ctx.clone();
+    let spawn = std::thread::Builder::new().name("mks-block-picture".into()).spawn(move || {
+        let picture = solidcraft_engine::render::render(&scene, &camera, 254, 102);
+        let image = egui::ColorImage::from_rgba_unmultiplied([picture.w, picture.h], &picture.rgba);
+        worker_ctx.data_mut(|d| {
+            d.insert_temp(key, BlockPicture { revision, image: Some(image), texture: None });
+            d.insert_temp(busy, false);
+        });
+        worker_ctx.request_repaint();
+    });
+    if spawn.is_err() {
+        ctx.data_mut(|d| d.insert_temp(busy, false));
     }
 }

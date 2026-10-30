@@ -1,0 +1,20 @@
+{
+  "de": {
+    "cmd.mks.result.video": "Dynamik als AVI exportieren",
+    "ui.mks_video.note": "AVI mit Motion JPEG. Gleichmäßige Bildrate, feste Kamera, interpolierte CAD-Positionen. Die Ergebnisdaten bleiben unverändert. Bestehende Dateien werden nicht überschrieben.",
+    "ui.mks_video.running": "Video wird im Hintergrund erstellt …",
+    "ui.mks_video.save": "Video erstellen",
+    "ui.mks_video.saved": "Gespeichert",
+    "ui.mks_video.size": "Bildgröße",
+    "ui.mks_video.title": "Video speichern"
+  },
+  "en": {
+    "cmd.mks.result.video": "Export Dynamics AVI",
+    "ui.mks_video.note": "Motion JPEG AVI. Uniform frame rate, fixed camera, interpolated CAD poses. Result data stays unchanged. Existing files are preserved.",
+    "ui.mks_video.running": "Creating video in the background …",
+    "ui.mks_video.save": "Create video",
+    "ui.mks_video.saved": "Saved",
+    "ui.mks_video.size": "Frame size",
+    "ui.mks_video.title": "Save video"
+  }
+}

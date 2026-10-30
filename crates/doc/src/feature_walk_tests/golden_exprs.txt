@@ -62,6 +62,16 @@ chamfer
     Distance 2 = chamfer.distance2 (Length)
     Angle = chamfer.angle (Angle)
   expressions: chamfer.distance, chamfer.distance2, chamfer.angle
+involute_gear
+  inputs:
+    Module = gear.module (Length)
+    Teeth = gear.teeth (Unitless)
+    Pressure angle = gear.pressure_angle (Angle)
+    Face width = gear.width (Length)
+    Bore or outside radius = gear.radius (Length)
+    Tooth phase = gear.phase (Angle)
+    Backlash = gear.backlash (Length)
+  expressions: gear.module, gear.teeth, gear.pressure_angle, gear.width, gear.radius, gear.phase, gear.backlash, gear.x, gear.y, gear.z
 box
   inputs:
     Length = box.length (Length)

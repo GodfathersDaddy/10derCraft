@@ -38,6 +38,12 @@ fn walk(dir: &Path, root: &Path, out: &mut Vec<String>) -> Result<(), String> {
     for e in std::fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))? {
         let e = e.map_err(|e| e.to_string())?;
         let name = e.file_name().to_string_lossy().into_owned();
+        // Optional local 10derCraft helpers and run outputs are ignored build
+        // inputs, not shipped resources. Their source licences are documented
+        // separately; do not scan downloaded SDKs or generated run archives.
+        if dir == root && matches!(name.as_str(), "external" | "output") {
+            continue;
+        }
         if name.starts_with('.') || name.starts_with("target") || matches!(name.as_str(), "plan" | "dist" | "node_modules" | "corpus") {
             continue;
         }

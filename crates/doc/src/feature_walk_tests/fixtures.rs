@@ -54,6 +54,10 @@ pub(super) fn fixtures() -> Vec<(&'static str, Value)> {
             "chamfer",
             json!({"type": "chamfer", "edges": [o], "distance": "chamfer.distance", "distance2": "chamfer.distance2", "angle": "chamfer.angle"}),
         ),
+        (
+            "involute_gear",
+            json!({"type":"involute_gear", "center":["gear.x","gear.y","gear.z"], "module":"gear.module", "teeth":"gear.teeth", "pressure_angle":"gear.pressure_angle", "width":"gear.width", "radius":"gear.radius", "internal":false, "phase":"gear.phase", "backlash":"gear.backlash"}),
+        ),
         ("box", json!({"type": "box", "corner": ["box.x", "box.y", "box.z"], "length": "box.length", "width": "box.width", "height": "box.height"})),
         ("cylinder", json!({"type": "cylinder", "base": ["cyl.x", "cyl.y", "cyl.z"], "radius": "cyl.radius", "height": "cyl.height"})),
         (

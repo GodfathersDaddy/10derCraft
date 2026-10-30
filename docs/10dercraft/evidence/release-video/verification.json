@@ -1,0 +1,101 @@
+{
+  "passed": true,
+  "projects": [
+    {
+      "id": "robot-drag-workflow",
+      "opened": true
+    },
+    {
+      "id": "robot-parametric-large-motion",
+      "opened": true
+    },
+    {
+      "id": "robot-control",
+      "opened": true
+    },
+    {
+      "id": "cad-mks-workflow",
+      "opened": true
+    },
+    {
+      "id": "mks-wires",
+      "opened": true
+    },
+    {
+      "id": "mks-sources",
+      "opened": true
+    },
+    {
+      "id": "weighted-pendulum",
+      "opened": true
+    },
+    {
+      "id": "robot",
+      "opened": true
+    },
+    {
+      "id": "robot-light",
+      "opened": true
+    },
+    {
+      "id": "planetary",
+      "opened": true
+    },
+    {
+      "id": "math-cad",
+      "opened": true
+    },
+    {
+      "id": "gears",
+      "opened": true
+    },
+    {
+      "id": "ports",
+      "opened": true
+    },
+    {
+      "id": "assembly",
+      "opened": true
+    },
+    {
+      "id": "mass",
+      "opened": true
+    },
+    {
+      "id": "drive",
+      "opened": true
+    },
+    {
+      "id": "pendulum",
+      "opened": true
+    },
+    {
+      "id": "variants",
+      "opened": true
+    }
+  ],
+  "videos": [
+    {
+      "bytes": 119976,
+      "frames": 31,
+      "fps": 15,
+      "decoded_frames": 31,
+      "id": "weighted-pendulum",
+      "seconds": 0.4648490999825299
+    },
+    {
+      "bytes": 94110,
+      "frames": 16,
+      "fps": 15,
+      "decoded_frames": 16,
+      "id": "robot-drag-workflow",
+      "seconds": 0.4995594999054447
+    }
+  ],
+  "ui_video": {
+    "bytes": 478610,
+    "frames": 31,
+    "fps": 30,
+    "decoded_frames": 31
+  }
+}

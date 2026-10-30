@@ -13,6 +13,7 @@ permissions:
 
 jobs:
   format-changes:
+    if: ${{ github.repository == 'tangency-labs/solidcraft' }}
     name: Design format changes merge cleanly
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -21,6 +22,7 @@ jobs:
       - run: bash scripts/test-format-pending.sh
 
   sorted:
+    if: ${{ github.repository == 'tangency-labs/solidcraft' }}
     name: Lists are sorted one item per line
     runs-on: ubuntu-24.04
     timeout-minutes: 15

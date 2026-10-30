@@ -1,23 +1,38 @@
 //! Persistent, input-bound jobs for an explicitly scoped optional external solver.
 use super::CommandSpec;
+use crate::schema::{TypedContract, output_schema_for};
 use crate::{Result, Session, params::bad};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use solidcraft_doc::{IDENTITY, Mat, apply_point, apply_vector, mat_mul};
 use solidcraft_geom::Vec3;
 use std::collections::{BTreeMap, BTreeSet};
 const KEY: &str = "org.solidcraft.assembly-simulation";
+const POSE_PREFIX: &str = "org.solidcraft.assembly-trajectory.";
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct ComputedRun {
+    result: Value,
+}
+#[derive(Serialize, JsonSchema)]
+struct CommittedRun {
+    accepted: bool,
+    cad_changed: bool,
+}
+const COMPUTED_RUN: TypedContract<ComputedRun> = TypedContract::new();
 pub static COMMANDS:&[CommandSpec]=&[
-    CommandSpec::new("mks.result.frame","Read Dynamics Frame",frame).noundo().params("sample: saved result sample index; simulated world transforms for CAD members/bodies and ports without changing CAD; refuses historical results"),
-    CommandSpec::new("mks.job.create","Prepare CAD Dynamics Job",create).params("duration_s?:2, steps?:1000, samples?:21, gravity_m_s2?:[0,0,-9.81], allow_assumed_density?:false, port_loads?:[{port,force_n?:[x,y,z],moment_nm?:[x,y,z],pressure_mpa?:number}], drivers?:[{joint:id,displacement:angle/length expression,ramp_s:number}]; smooth cosine increment from current pose; open rigid revolute/slider tree only"),
-    CommandSpec::new("mks.job.run","Run Local CAD Dynamics",run).params("Same settings as mks.job.create; starts optional installed external Exudyn adapter, bounded timeout, saves input-bound result; no CAD motion or network server"),
-    CommandSpec::new("mks.job.accept","Import CAD Dynamics Result",accept).params("result: assembly_worker output; exact current prepared job and CAD source required; no CAD changes"),
-    CommandSpec::new("mks.job.state","Inspect CAD Dynamics Result",state).noundo().params("Persistent job and compact trajectories, with validity against current CAD, material, parameters and pending poses"),
+    CommandSpec::new("mks.result.frame","Read Dynamics Frame",frame).icon("graph").noundo().params("sample: saved result sample index; simulated world transforms for CAD members/bodies and ports without changing CAD; refuses historical results"),
+    CommandSpec::new("mks.job.create","Prepare CAD Dynamics Job",create).icon("new").params("duration_s?:2, steps?:1000, samples?:21, gravity_m_s2?:[0,0,-9.81], allow_assumed_density?:false, port_loads?:[{port,force_n?:[x,y,z],moment_nm?:[x,y,z],pressure_mpa?:number}], drivers?:[{joint:id,displacement:angle/length expression,ramp_s:number,profile?:cosine|quintic|sine,frequency_hz?:1}]; relative motion from current pose; open rigid revolute/slider tree only; measured joint coordinates and velocities in SI"),
+    CommandSpec::new("mks.job.run","Run Local CAD Dynamics",run).icon("drive").params("Same settings as mks.job.create; starts optional installed external Exudyn adapter, bounded timeout, saves input-bound result; no CAD motion or network server"),
+    CommandSpec::new("mks.job.accept","Import CAD Dynamics Result",accept).icon("update").params("result: assembly_worker output; exact current prepared job and CAD source required; no CAD changes"),
+    CommandSpec::new("mks.job.state","Inspect CAD Dynamics Result",state).icon("graph").noundo().params("Persistent job and compact trajectories, with validity against current CAD, material, parameters and pending poses"),
+    CommandSpec::new("mks.job.commit","Apply Computed Dynamics",crate::checked!("mks.job.commit", commit_run)).icon("update").contract(&COMPUTED_RUN).output(output_schema_for::<CommittedRun>),
 ];
 fn error(msg: impl Into<String>) -> crate::EngineError {
     bad("mks.simulation", msg)
 }
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 struct Settings {
     duration_s: f64,
@@ -41,7 +56,7 @@ impl Default for Settings {
         }
     }
 }
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Load {
     port: String,
@@ -51,24 +66,38 @@ struct Load {
     moment_nm: [f64; 3],
     pressure_mpa: Option<f64>,
 }
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Drive {
     joint: u64,
     displacement: String,
     ramp_s: f64,
+    #[serde(default = "default_profile")]
+    profile: String,
+    #[serde(default = "default_frequency")]
+    frequency_hz: f64,
+}
+fn default_profile() -> String {
+    "cosine".to_owned()
+}
+fn default_frequency() -> f64 {
+    1.
 }
 pub(super) fn snapshot(s: &Session) -> Result<Value> {
     if !s.model.param_errors.is_empty() || s.model.results.iter().any(|r| r.error.is_some() || r.stale) {
         return Err(error("repair CAD feature/parameter errors before dynamics"));
     }
-    let mut source = serde_json::to_value(&*s.placed_document()).map_err(|e| error(e.to_string()))?;
+    let mut physical = (*s.placed_document()).clone();
+    physical.simulation_results = None;
+    let mut source = serde_json::to_value(&physical).map_err(|e| error(e.to_string()))?;
     // Saving an untitled design assigns its filename as title; this is not a physical edit.
     if let Some(map) = source.as_object_mut() {
         map.remove("name");
     }
     if let Some(m) = source.get_mut("metadata").and_then(Value::as_object_mut) {
         m.remove(KEY);
+        m.retain(|key, _| !key.starts_with(POSE_PREFIX));
+        m.remove(super::worksheet::PRESENTATION);
         m.remove(super::robot::FEM_KEY);
     }
     if source.get("metadata").and_then(Value::as_object).is_some_and(|m| m.is_empty())
@@ -98,16 +127,16 @@ fn vector(v: &Value) -> Result<Vec3> {
     serde_json::from_value(v.clone()).map_err(|e| error(e.to_string()))
 }
 fn build(s: &mut Session, p: &Value) -> Result<Value> {
-    let settings: Settings = serde_json::from_value(p.clone()).map_err(|e| error(e.to_string()))?;
+    let settings: Settings = serde_json::from_value(super::mks_diagram::settings(s, p)?).map_err(|e| error(e.to_string()))?;
     if !settings.duration_s.is_finite()
         || !(0.001..=10.).contains(&settings.duration_s)
         || !(10..=10000).contains(&settings.steps)
-        || !(2..=101).contains(&settings.samples)
+        || !(2..=1001).contains(&settings.samples)
         || !settings.steps.is_multiple_of(settings.samples - 1)
         || settings.gravity_m_s2.iter().any(|v| !v.is_finite() || v.abs() > 100.)
         || settings.port_loads.len() > 8
     {
-        return Err(error("duration .001..10 s, steps 10..10000 divisible by samples-1, samples 2..101, |gravity|<=100, at most 8 loads"));
+        return Err(error("duration .001..10 s, steps 10..10000 divisible by samples-1, samples 2..1001, |gravity|<=100, at most 8 loads"));
     }
     let source = snapshot(s)?;
     let graph = super::mks::model(s, &json!({}))?;
@@ -141,8 +170,8 @@ fn build(s: &mut Session, p: &Value) -> Result<Value> {
             ports.insert(text(&port["port"]["id"])?.to_owned(), (id.to_owned(), port.clone()));
         }
     }
-    if bodies.is_empty() || bodies.len() > 8 || bodies.len() * (settings.samples as usize - 1) > 100 {
-        return Err(error("adapter supports 1..8 moving blocks and at most 100 body/sample intervals; reduce samples for larger chains"));
+    if bodies.is_empty() || bodies.len() > 8 || bodies.len() * (settings.samples as usize - 1) > 8000 {
+        return Err(error("adapter supports 1..8 moving blocks and at most 8000 body/sample intervals; reduce samples for larger chains"));
     }
     let ground = ground.ok_or_else(|| error("ground missing"))?;
     let mut joints = Vec::new();
@@ -219,6 +248,15 @@ fn build(s: &mut Session, p: &Value) -> Result<Value> {
     let mut drivers = Vec::new();
     let mut driven = BTreeSet::new();
     for drive in &settings.drivers {
+        if !super::mks_signals::valid(&drive.profile) || !drive.frequency_hz.is_finite() || !(0.01..=20.).contains(&drive.frequency_hz) {
+            return Err(error("motion profile must be cosine/quintic/sine; frequency .01..20 Hz"));
+        }
+        if drive.profile == "sine"
+            && (settings.duration_s / settings.steps as f64 > 1. / (50. * drive.frequency_hz)
+                || settings.duration_s / (settings.samples - 1) as f64 > 1. / (10. * drive.frequency_hz))
+        {
+            return Err(error("sine needs at least 50 integration steps and 10 output samples per period"));
+        }
         let joint = joints.iter().find(|j| j["id"] == drive.joint).ok_or_else(|| error("drive joint does not exist in supported model"))?;
         if !driven.insert(drive.joint)
             || !drive.ramp_s.is_finite()
@@ -237,7 +275,9 @@ fn build(s: &mut Session, p: &Value) -> Result<Value> {
         if !amplitude.is_finite() || amplitude.abs() > if angular { 3.0 } else { 10. } {
             return Err(error("drive increment exceeds adapter range (3 rad or 10 m)"));
         }
-        drivers.push(json!({"joint":drive.joint,"amplitude_si":amplitude,"ramp_s":drive.ramp_s,"profile":"half_cosine_displacement_then_hold"}));
+        drivers.push(
+            json!({"joint":drive.joint,"amplitude_si":amplitude,"ramp_s":drive.ramp_s,"profile":drive.profile,"frequency_hz":drive.frequency_hz}),
+        );
     }
     // No stop/contact law: bounded joints are admitted only when a prescribed,
     // monotone ramp stays wholly inside their native travel range.
@@ -260,7 +300,9 @@ fn build(s: &mut Session, p: &Value) -> Result<Value> {
             }
             let lo = limit.get(0).and_then(Value::as_f64).ok_or_else(|| error("invalid joint minimum"))?;
             let hi = limit.get(1).and_then(Value::as_f64).ok_or_else(|| error("invalid joint maximum"))?;
-            if !lo.is_finite() || !hi.is_finite() || lo > hi || q.min(q + increment) < lo - 1e-10 || q.max(q + increment) > hi + 1e-10 {
+            let (minimum, maximum) =
+                if drive["profile"] == "sine" { (q - increment.abs(), q + increment.abs()) } else { (q.min(q + increment), q.max(q + increment)) };
+            if !lo.is_finite() || !hi.is_finite() || lo > hi || minimum < lo - 1e-10 || maximum > hi + 1e-10 {
                 return Err(error("prescribed ramp exceeds native joint limits"));
             }
         }
@@ -270,7 +312,18 @@ fn build(s: &mut Session, p: &Value) -> Result<Value> {
     )
 }
 fn save(s: &mut Session, job: Value, result: Option<Value>) -> Result<Value> {
-    let v = json!({"job":job,"result":result});
+    if let Some(result) = &result
+        && serde_json::to_vec(result).map_err(|e| error(e.to_string()))?.len() > 8 * 1024 * 1024
+    {
+        return Err(error("dynamics result exceeds 8 MiB"));
+    }
+    let old: Vec<_> = s.doc.metadata.0.keys().filter(|k| k.starts_with(POSE_PREFIX)).cloned().collect();
+    for key in old {
+        s.doc_mut().metadata.remove(&key);
+    }
+    let pointer = result.as_ref().map(|_| json!({"document_result":true}));
+    s.doc_mut().simulation_results = result.map(std::sync::Arc::new);
+    let v = json!({"job":job,"result":pointer});
     s.doc_mut().metadata.set(solidcraft_doc::metadata::Owner::Design, KEY, v.clone())?;
     Ok(v)
 }
@@ -319,6 +372,11 @@ fn validate(job: &Value, result: &Value) -> Result<Value> {
         if !finite_rows(&reactions.get(&j["id"].to_string()).cloned().unwrap_or(Value::Null), 3) {
             return Err(error("invalid joint forces"));
         }
+        if let Some(positions) = result.get("joint_coordinates_si")
+            && !finite_rows(&positions[&j["id"].to_string()], 2)
+        {
+            return Err(error("invalid measured joint coordinates"));
+        }
     }
     for (key, limit) in [("max_position_constraint_m", 1e-5), ("max_axis_alignment_error", 1e-5), ("max_energy_change_j", 1e12)] {
         if !result["summary"][key].as_f64().is_some_and(|v| v.is_finite() && v >= 0. && v <= limit) {
@@ -349,14 +407,82 @@ fn accept(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({"accepted":true,"cad_changed":false}))
 }
 fn run(s: &mut Session, p: &Value) -> Result<Value> {
-    let job = build(s, p)?;
+    let mut inputs = p.clone();
+    let force = match inputs.get("recompute") {
+        None => false,
+        Some(Value::Bool(v)) => *v,
+        _ => return Err(error("recompute must be boolean")),
+    };
+    if let Some(obj) = inputs.as_object_mut() {
+        obj.remove("recompute");
+    }
+    let settings: Settings = serde_json::from_value(super::mks_diagram::settings(s, &inputs)?).map_err(|e| error(e.to_string()))?;
+    let stored = s.doc.metadata.get(KEY);
+    let prepared = if let Some(data) = stored
+        && data["job"]["schema"] == "solidcraft.assembly-job/1"
+        && data["job"]["backend"] == "exudyn_rigid_open_chain"
+        && serde_json::from_value::<Settings>(data["job"]["settings"].clone()).is_ok_and(|v| v == settings)
+        && data["job"]["source"] == snapshot(s)?
+    {
+        Some(data["job"].clone())
+    } else {
+        None
+    };
+    if !force && prepared.is_some() && stored.is_some_and(|d| d["result"].is_object()) {
+        let mut result = state(s, &json!({}))?["data"]["result"].clone();
+        result["execution"] = json!("reused_current_result");
+        return Ok(result);
+    }
+    // Forcing the solver does not require re-integrating the exact same CAD.
+    let reused_preparation = prepared.is_some();
+    let job = match prepared {
+        Some(job) => job,
+        None => build(s, &inputs)?,
+    };
     let result = super::mks_local::execute(&job)?;
     let compact = validate(&job, &result)?;
     save(s, job, Some(compact.clone()))?;
-    Ok(compact)
+    let mut reply = compact;
+    reply["execution"] = json!("computed");
+    reply["preparation"] = json!(if reused_preparation { "reused_current_job" } else { "rebuilt" });
+    Ok(reply)
+}
+fn commit_run(s: &mut Session, p: &Value) -> Result<Value> {
+    let p: ComputedRun = serde_json::from_value(p.clone()).map_err(|e| error(e.to_string()))?;
+    let proposed = &p.result["job"];
+    if proposed["source"] != snapshot(s)? {
+        return Err(error("CAD or simulation inputs changed while computing; result discarded"));
+    }
+    // A worker never replaces the live design. Rebuild and verify the exact job;
+    // geometry integrations are shared with the scratch session, not recomputed.
+    let job = if s.doc.metadata.get(KEY).is_some_and(|d| d["job"] == *proposed) { proposed.clone() } else { build(s, &proposed["settings"])? };
+    if job != *proposed {
+        return Err(error("computed job differs from current CAD dynamics"));
+    }
+    let result = validate(&job, &p.result)?;
+    save(s, job, Some(result))?;
+    Ok(json!({"accepted":true,"cad_changed":false}))
 }
 fn state(s: &mut Session, _: &Value) -> Result<Value> {
-    let data = s.doc.metadata.get(KEY).cloned().unwrap_or_else(|| json!({}));
+    let mut data = s.doc.metadata.get(KEY).cloned().unwrap_or_else(|| json!({}));
+    if data["result"]["document_result"] == true {
+        data["result"] = s.doc.simulation_results.as_deref().ok_or_else(|| error("document dynamics result missing"))?.clone();
+    }
+    if let Some(keys) = data["result"]["trajectory_keys"].as_object().cloned() {
+        if keys.len() > 8 {
+            return Err(error("invalid trajectory shard count"));
+        }
+        let mut trajectories = serde_json::Map::new();
+        for (id, key) in keys {
+            let expected = format!("{POSE_PREFIX}{id}");
+            if key.as_str() != Some(expected.as_str()) {
+                return Err(error("invalid trajectory shard key"));
+            }
+            let poses = s.doc.metadata.get(&expected).and_then(|v| v.get("poses")).ok_or_else(|| error("trajectory shard missing"))?;
+            trajectories.insert(id, poses.clone());
+        }
+        data["result"]["trajectories"] = json!(trajectories);
+    }
     let current = data.get("job").is_some() && snapshot(s).is_ok_and(|v| v == data["job"]["source"]);
     Ok(json!({"data":data,"job_current":current,"result_current":current && data["result"].is_object(),"persistence":"project_metadata"}))
 }
@@ -366,7 +492,7 @@ pub(super) fn frame(s: &mut Session, p: &Value) -> Result<Value> {
     if state["result_current"] != true {
         return Err(error("a current dynamics result is required for replay"));
     }
-    let index = p.get("sample").and_then(Value::as_u64).filter(|i| *i < 101).ok_or_else(|| error("sample index 0..100 required"))? as usize;
+    let index = p.get("sample").and_then(Value::as_u64).filter(|i| *i < 1001).ok_or_else(|| error("sample index 0..1000 required"))? as usize;
     let data = &state["data"];
     let result = &data["result"];
     let job = &data["job"];

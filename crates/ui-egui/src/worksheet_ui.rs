@@ -1,4 +1,6 @@
 //! Native calculation document. Every editable definition is a shared CAD parameter.
+#[path = "worksheet_canvas_ui.rs"]
+mod canvas;
 use crate::{SolveApp, scenario, theme::Tokens};
 use egui::{RichText, vec2};
 use serde_json::{Value, json};
@@ -19,7 +21,12 @@ struct Draft {
 }
 
 fn run(app: &mut SolveApp, draft: &mut Draft, command: &str, params: Value) -> bool {
-    match app.run(command, params) {
+    let result = if matches!(command, "worksheet.apply" | "worksheet.set" | "worksheet.variant.select") {
+        app.run_heavy(command, params)
+    } else {
+        app.run(command, params)
+    };
+    match result {
         Ok(_) => {
             draft.error.clear();
             true
@@ -32,6 +39,9 @@ fn run(app: &mut SolveApp, draft: &mut Draft, command: &str, params: Value) -> b
 }
 
 pub fn show(app: &mut SolveApp, ui: &mut egui::Ui) {
+    if canvas::show(app, ui) {
+        return;
+    }
     let id = egui::Id::new(("calculation_document", app.docs.active, app.session.path.clone()));
     let mut draft = ui.data_mut(|d| d.get_temp::<Draft>(id)).unwrap_or_default();
     if draft.path.is_empty() {
@@ -376,7 +386,8 @@ pub fn cad_notice(app: &mut SolveApp, ui: &mut egui::Ui) {
     if state["pending"].as_u64().unwrap_or(0) == 0 {
         return;
     }
-    egui::Panel::top("calculation_changes").show(ui, |ui| {
+    let host = crate::ui_kit::Container::new(ui.ctx(), crate::ui_kit::Surface::Chrome);
+    host.edge("calculation_changes", crate::ui_kit::Edge::Top).show(ui, |ui| {
         let mut draft = Draft::default();
         ui.collapsing(format!("Berechnung geändert: {} CAD-Referenzen – Änderungen prüfen", state["pending"]), |ui| {
             review(app, ui, &state, &mut draft);

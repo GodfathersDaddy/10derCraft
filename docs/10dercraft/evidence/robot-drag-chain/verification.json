@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "duration_s": 1,
+  "samples": 1001,
+  "drag_source": true,
+  "drag_sensor": true,
+  "drag_measurement_wire": true,
+  "original_unchanged": true
+}

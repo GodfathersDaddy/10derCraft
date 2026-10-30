@@ -1,0 +1,22 @@
+{
+  "en": {
+    "ui.mks_workflow.all_angles": "All joint angles",
+    "ui.mks_workflow.all_forces": "All joint forces",
+    "ui.mks_workflow.all_positions": "All slider positions",
+    "ui.mks_workflow.clear_scope": "Clear selection",
+    "ui.mks_workflow.existing_source": "Connect existing source",
+    "ui.mks_workflow.new_source": "Create motion source for this joint",
+    "ui.mks_workflow.playback_speed": "Playback",
+    "ui.mks_workflow.repeat": "Repeat"
+  },
+  "de": {
+    "ui.mks_workflow.all_angles": "Alle Gelenkwinkel",
+    "ui.mks_workflow.all_forces": "Alle Gelenkkräfte",
+    "ui.mks_workflow.all_positions": "Alle Schubwege",
+    "ui.mks_workflow.clear_scope": "Auswahl leeren",
+    "ui.mks_workflow.existing_source": "Vorhandene Quelle verbinden",
+    "ui.mks_workflow.new_source": "Bewegungsquelle für dieses Gelenk anlegen",
+    "ui.mks_workflow.playback_speed": "Wiedergabe",
+    "ui.mks_workflow.repeat": "Wiederholen"
+  }
+}

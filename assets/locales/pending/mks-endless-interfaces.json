@@ -1,0 +1,24 @@
+{
+  "de": {
+    "cmd.mks.interface.describe": "CAD-Schnittstelle beschriften",
+    "ui.mks_face.area_from_cad": "Fläche aus CAD [mm²]",
+    "ui.mks_face.bidirectional": "Kraftaufnahme und -abgabe",
+    "ui.mks_face.details": "Hinweise zur Lastübertragung",
+    "ui.mks_face.label": "Beschriftung",
+    "ui.mks_face.load_in": "Kraftaufnahme",
+    "ui.mks_face.load_out": "Kraftabgabe",
+    "ui.mks_face.rename": "Beschriftung und Rolle speichern",
+    "ui.mks_face.surface": "Flächenübergabe – Fläche aus CAD nachführen"
+  },
+  "en": {
+    "cmd.mks.interface.describe": "Label CAD simulation interface",
+    "ui.mks_face.area_from_cad": "Area from CAD [mm²]",
+    "ui.mks_face.bidirectional": "Force reception and transmission",
+    "ui.mks_face.details": "Load transfer details",
+    "ui.mks_face.label": "Label",
+    "ui.mks_face.load_in": "Force reception",
+    "ui.mks_face.load_out": "Force transmission",
+    "ui.mks_face.rename": "Save label and role",
+    "ui.mks_face.surface": "Surface transfer – update area from CAD"
+  }
+}

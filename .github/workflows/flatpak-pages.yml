@@ -20,6 +20,7 @@ concurrency:
 
 jobs:
   publish:
+    if: ${{ github.repository == 'tangency-labs/solidcraft' }}
     name: Request the combined docs, web, and Flatpak deployment
     runs-on: ubuntu-24.04
     env:

@@ -8,6 +8,8 @@ struct Draft {
     port: String,
     body: String,
     occurrence: String,
+    joint_origin: Option<String>,
+    cad_description: Value,
     origin: [String; 3],
     quaternion: [f64; 4],
     transfer: usize,
@@ -30,6 +32,8 @@ impl Default for Draft {
             port: "tip".into(),
             body: String::new(),
             occurrence: String::new(),
+            joint_origin: None,
+            cad_description: Value::Null,
             origin: ["0 mm".into(), "0 mm".into(), "0 mm".into()],
             quaternion: [1., 0., 0., 0.],
             transfer: 0,
@@ -76,6 +80,8 @@ fn text(ui: &mut egui::Ui, id: &str, label: &str, value: &mut String) {
     });
 }
 fn load(d: &mut Draft, p: &Value) {
+    d.cad_description = json!({"label":p["label"],"role":p["role"],"area_face":p["area_face"]});
+    d.joint_origin = p["joint_origin"].as_str().map(str::to_owned);
     d.port = p["id"].as_str().unwrap_or("").into();
     d.body = p["body"].as_str().unwrap_or("").into();
     d.occurrence = p["occurrence"].as_array().map(|a| a.iter().map(Value::to_string).collect::<Vec<_>>().join(",")).unwrap_or_default();
@@ -120,19 +126,27 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui, graph: bool) {
         if let Some(ports)=ports {ui.horizontal_wrapped(|ui|{for (id,p) in ports {if button(ui,&format!("mechanics:select:{id}"),id){load(&mut d,p);}}});}
         for p in state["resolved_ports"].as_array().into_iter().flatten().filter(|p|p["valid"]==false){ui.label(format!("{}: {}",p["id"],p["error"]));}
         ui.collapsing("Schnittstelle definieren / ändern",|ui|{
+            if let Some(origin)=&d.joint_origin {ui.label(format!("CAD: {origin}"));ui.small(app.tr("ui.mks_cad.resultant_note"));}
             text(ui,"mechanics:port:id","ID",&mut d.port);text(ui,"mechanics:port:body","CAD-Körper (Quellname)",&mut d.body);
             text(ui,"mechanics:port:occurrence","Occurrence-Pfad, z. B. 1,3 (leer bei Root-Körper)",&mut d.occurrence);
             for (i,label) in ["Position X [mm / Ausdruck]","Position Y [mm / Ausdruck]","Position Z [mm / Ausdruck]"].iter().enumerate(){if let Some(value)=d.origin.get_mut(i){text(ui,&format!("mechanics:origin:{i}"),label,value);}}
             egui::ComboBox::from_id_salt("mechanical_transfer").selected_text(["Punktkraft (3)","Rahmen: Kraft/Moment (6)","Fläche: Kraft/Moment (6)","Fläche: gleichmäßiger Normaldruck"].get(d.transfer).copied().unwrap_or("")).show_ui(ui,|ui|{
                 for (i,label) in ["Punktkraft (3)","Rahmen: Kraft/Moment (6)","Fläche: Kraft/Moment (6)","Fläche: gleichmäßiger Normaldruck"].iter().enumerate(){ui.selectable_value(&mut d.transfer,i,*label);}
             });
-            if d.transfer>=2{ui.horizontal(|ui|{ui.label("Deklarierte Fläche [mm²], nicht aus CAD gemessen");ui.add(egui::DragValue::new(&mut d.area));});}
+            if d.transfer>=2{ui.horizontal(|ui|{
+                let associative=d.cad_description["area_face"].is_string();
+                ui.label(if associative {app.tr("ui.mks_face.area_from_cad")} else {"Deklarierte Fläche [mm²], nicht aus CAD gemessen"});
+                ui.add_enabled(!associative,egui::DragValue::new(&mut d.area));
+            });}
             ui.horizontal_wrapped(|ui|{ui.label("Orientierung Quaternion w,x,y,z");for q in &mut d.quaternion {ui.add(egui::DragValue::new(q).speed(0.01));}});
             if button(ui,"mechanics:port:save","Schnittstelle speichern") {
                 let path=d.occurrence.split(',').map(str::trim).filter(|s|!s.is_empty()).map(str::parse::<u64>).collect::<Result<Vec<_>,_>>();
                 match path {Ok(path)=>{let mut p=json!({"id":d.port,"body":d.body,"occurrence":path,"origin":d.origin,"quaternion":d.quaternion,
                     "support":if d.transfer>=2 {"surface"}else{"point"},"transfer":match d.transfer{0=>"point_force",3=>"pressure",_=>"frame_wrench"}});
-                    if d.transfer>=2 {p["area_mm2"]=json!(d.area);}run(app,&mut d,"mechanics.port",p);},Err(e)=>d.error=e.to_string()}
+                    if d.transfer>=2 {p["area_mm2"]=json!(d.area);}
+                    if let Some(origin)=&d.joint_origin{p["joint_origin"]=json!(origin);}
+                    for key in ["label","role","area_face"] {if !d.cad_description[key].is_null() && (key!="area_face" || d.transfer>=2){p[key]=d.cad_description[key].clone();}}
+                    run(app,&mut d,"mechanics.port",p);},Err(e)=>d.error=e.to_string()}
             }
         });
         ui.collapsing("Starren Lastpfad verbinden",|ui|{

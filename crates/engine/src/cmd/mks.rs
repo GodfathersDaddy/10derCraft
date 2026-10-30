@@ -11,10 +11,10 @@ use solidcraft_doc::{
 use std::collections::{BTreeMap, BTreeSet};
 
 pub static COMMANDS: &[CommandSpec] = &[
-    CommandSpec::new("mks.mass_properties", "Calculate Block Mass Properties", super::mks_mass::calculate).noundo().params(
+    CommandSpec::new("mks.mass_properties", "Calculate Block Mass Properties", super::mks_mass::calculate).icon("center_of_mass").noundo().params(
         "Read-only material-aware block masses, world COM in m and centroidal world-axis inertia in kg m^2. Closed welded meshes, two tessellation levels; incomplete blocks explicitly rejected. No dynamics simulation.",
     ),
-    CommandSpec::new("mks.model", "Derive Assembly Blocks", model).noundo().params(
+    CommandSpec::new("mks.model", "Derive Assembly Blocks", model).icon("rigid_group").noundo().params(
         "Read-only native CAD rigid blocks, exact occurrence paths, moving joints and project ports. Includes current pending poses; unresolved/ambiguous joints and unsupported couplings are reported. No dynamic integration or inertia calculation.",
     ),
 ];

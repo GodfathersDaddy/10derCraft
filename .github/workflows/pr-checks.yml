@@ -19,6 +19,7 @@ concurrency:
 
 jobs:
   duplicate:
+    if: ${{ github.repository == 'tangency-labs/solidcraft' }}
     name: Duplicate PR check
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -34,6 +35,7 @@ jobs:
             core.info(JSON.stringify(r));
 
   defaults:
+    if: ${{ github.repository == 'tangency-labs/solidcraft' }}
     name: Defaults line check
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -52,6 +54,7 @@ jobs:
   # effort: a fork PR just doesn't get the `changes-default` label from here.
   label:
     name: Label changes-default
+    if: ${{ github.repository == 'tangency-labs/solidcraft' && (github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     continue-on-error: true

@@ -20,6 +20,7 @@ concurrency:
 
 jobs:
   lint:
+    if: ${{ github.repository == 'tangency-labs/solidcraft' }}
     runs-on: ubuntu-latest
     env:
       ACTIONLINT_VERSION: 1.7.12

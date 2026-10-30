@@ -17,6 +17,7 @@ concurrency:
 
 jobs:
   promote:
+    if: ${{ github.repository == 'tangency-labs/solidcraft' }}
     runs-on: ubuntu-latest
     steps:
       - id: creds

@@ -1,0 +1,12 @@
+{
+  "bytes": 1710760,
+  "frames": 151,
+  "fps": 30,
+  "decoded_frames": 151,
+  "passed": true,
+  "solver_seconds": 20.518835800001398,
+  "export_seconds": 11.012532699969597,
+  "duration_s": 5,
+  "samples": 1001,
+  "source_unchanged": true
+}

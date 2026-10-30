@@ -96,7 +96,7 @@ pub(super) fn solve(s: &mut Session, p: &Value) -> Result<Value> {
     let mut reports = Vec::new();
     let mut tcp_displacement = Vec3::ZERO;
     let mut warnings = vec![
-        "Linear locked-actuator cylinder idealization; external world-Z TCP force only. No gravity, joint/gearbox compliance, shear, contact, solid mesh, local notch stress or dynamic stress recovery.",
+        "Linear locked-actuator cylinder idealization; TCP local -Z force only. No gravity, joint/gearbox compliance, shear, contact, solid mesh, local notch stress or dynamic stress recovery.",
     ];
     for (module, name) in [("upper", "Oberarm"), ("forearm", "Unterarm")] {
         let feature = s.doc.features.iter().find(|f| f.name == name && !f.suppressed).ok_or_else(|| error("native arm cylinder missing"))?;
@@ -163,6 +163,185 @@ pub(super) fn solve(s: &mut Session, p: &Value) -> Result<Value> {
     let report = json!({"schema":"solidcraft.robot-beam-fem/1","source":source,"method":"assembled cubic Hermite Euler-Bernoulli bending FE, pivoted elimination; axial/torsion closed-form","load_case":{"tcp_world_mm":tcp,"force_world_n":force,"gravity_included":false,"actuators":"locked"},"beams":reports,"tcp_displacement_mm":tcp_displacement,"tcp_deflection_mm":magnitude,"limit_mm":limit,"feasible":magnitude<=limit,"warnings":warnings,"coupling":"quasi-static CAD pose; no flexible feedback into MKS","cad_changed":false});
     s.doc_mut().metadata.set(solidcraft_doc::metadata::Owner::Design, super::robot::FEM_KEY, report.clone())?;
     Ok(report)
+}
+
+/// Read-only display model. Only calculated beam displacement fields deform geometry;
+/// all other CAD is shown as a translucent reference, never as solved solid FEM.
+pub fn result_scene(s: &mut Session, scale: f64, palette: crate::view::Palette) -> Result<(solidcraft_render::Scene, solidcraft_geom::Aabb3, f64)> {
+    use solidcraft_geom::Aabb3;
+    use solidcraft_render::{Scene, SceneMesh};
+    use std::sync::Arc;
+    if !scale.is_finite() || !(0. ..=10000.).contains(&scale) {
+        return Err(error("display scale must be 0..10000"));
+    }
+    let state = s.execute("robot.inspect", &json!({}))?;
+    if state["fem_current"] != true {
+        return Err(error("current robot FEM result required"));
+    }
+    let model = s.execute("mks.model", &json!({}))?;
+    let report = &state["fem"];
+    let beams = report["beams"].as_array().ok_or_else(|| error("beam results missing"))?;
+    if beams.len() != 2 {
+        return Err(error("two arm beam results required"));
+    }
+    let mut fields = Vec::<(usize, Vec<f64>)>::new();
+    let read = |v: &Value| -> Result<Vec3> { serde_json::from_value(v.clone()).map_err(|e| error(e.to_string())) };
+    let mut out = Scene { background: Some(palette.background), ..Scene::default() };
+    let mut bounds = Aabb3::EMPTY;
+    let mut triangles = 0;
+    let native = s.model.state();
+    for placed in model["blocks"].as_array().into_iter().flatten().flat_map(|b| b["bodies"].as_array().into_iter().flatten()) {
+        let Some(body) = native
+            .bodies
+            .iter()
+            .find(|b| Some(b.name.as_str()) == placed["source"].as_str() && Some(s.doc.model_body_component(b)) == placed["component"].as_u64())
+        else {
+            return Err(error("CAD source missing"));
+        };
+        let world: solidcraft_doc::Mat = serde_json::from_value(placed["world"].clone()).map_err(|e| error(e.to_string()))?;
+        let source = body.mesh();
+        triangles += source.triangles.len();
+        if triangles > 100_000 {
+            return Err(error("FEM picture limited to 100000 triangles"));
+        }
+        let mut mesh = (*source).clone();
+        for p in &mut mesh.positions {
+            *p = apply_point(&world, *p);
+            bounds.add(*p);
+        }
+        for n in &mut mesh.normals {
+            *n = apply_vector(&world, *n);
+        }
+        mesh.edges.clear();
+        let beam_index =
+            beams.iter().position(|b| b["body"] == placed["source"] && placed["path"].as_array().is_some_and(|p| p.last() == Some(&b["occurrence"])));
+        if let Some(index) = beam_index {
+            let beam = beams.get(index).ok_or_else(|| error("beam missing"))?;
+            let nodes = beam["nodes"].as_array().filter(|v| (2..=33).contains(&v.len())).ok_or_else(|| error("beam nodes missing"))?;
+            let start = read(&nodes.first().ok_or_else(|| error("beam root missing"))?["position_mm"])?;
+            let end = read(&nodes.last().ok_or_else(|| error("beam tip missing"))?["position_mm"])?;
+            let axis = (end - start).normalized().ok_or_else(|| error("zero beam length"))?;
+            let length = (end - start).len();
+            // A CAD cylinder usually has only two axial rings. Render the SAME circular
+            // beam section with axial subdivisions so cubic bending is actually visible.
+            let radius =
+                beam["radius_mm"].as_f64().filter(|r| r.is_finite() && (0.1..=1000.).contains(r)).ok_or_else(|| error("invalid beam radius"))?;
+            let seed = if axis.dot(Vec3::Y).abs() < 0.9 { Vec3::Y } else { Vec3::Z };
+            let transverse = (seed - axis * seed.dot(axis)).normalized().ok_or_else(|| error("invalid beam frame"))?;
+            let binormal = axis.cross(transverse);
+            let axial_segments = (nodes.len() - 1) * 4;
+            let sides = 48usize;
+            mesh = solidcraft_geom::Mesh::default();
+            for ring in 0..=axial_segments {
+                let centre = start + axis * (length * ring as f64 / axial_segments as f64);
+                for j in 0..sides {
+                    let angle = 2. * PI * j as f64 / sides as f64;
+                    let normal = transverse * angle.cos() + binormal * angle.sin();
+                    mesh.positions.push(centre + normal * radius);
+                    mesh.normals.push(normal);
+                }
+            }
+            for ring in 0..axial_segments {
+                for j in 0..sides {
+                    let a = (ring * sides + j) as u32;
+                    let b = (ring * sides + (j + 1) % sides) as u32;
+                    let c = ((ring + 1) * sides + j) as u32;
+                    let d = ((ring + 1) * sides + (j + 1) % sides) as u32;
+                    mesh.triangles.extend([[a, b, c], [b, d, c]]);
+                }
+            }
+            for (ring, centre, normal) in [(0, start, -axis), (axial_segments, end, axis)] {
+                let centre_id = mesh.positions.len() as u32;
+                mesh.positions.push(centre);
+                mesh.normals.push(normal);
+                for j in 0..sides {
+                    let a = (ring * sides + j) as u32;
+                    let b = (ring * sides + (j + 1) % sides) as u32;
+                    mesh.triangles.push(if ring == 0 { [centre_id, b, a] } else { [centre_id, a, b] });
+                }
+            }
+            mesh.tri_face.resize(mesh.triangles.len(), 0);
+            let transform = |p: Vec3| -> Result<(Vec3, Vec3, f64)> {
+                let t = ((p - start).dot(axis) / length).clamp(0., 1.) * (nodes.len() - 1) as f64;
+                let i = (t.floor() as usize).min(nodes.len() - 2);
+                let a = nodes.get(i).ok_or_else(|| error("node missing"))?;
+                let b = nodes.get(i + 1).ok_or_else(|| error("node missing"))?;
+                let f = t - i as f64;
+                let centre = start + axis * ((p - start).dot(axis).clamp(0., length));
+                let ua = read(&a["displacement_mm"])?;
+                let ub = read(&b["displacement_mm"])?;
+                let ra = read(&a["rotation_rad"])?;
+                let rb = read(&b["rotation_rad"])?;
+                let h = length / (nodes.len() - 1) as f64;
+                let linear = ua * (1. - f) + ub * f;
+                let h00 = 2. * f.powi(3) - 3. * f * f + 1.;
+                let h10 = f.powi(3) - 2. * f * f + f;
+                let h01 = -2. * f.powi(3) + 3. * f * f;
+                let h11 = f.powi(3) - f * f;
+                let cubic = ua * h00 + ra.cross(axis) * (h * h10) + ub * h01 + rb.cross(axis) * (h * h11);
+                let slope = ua * ((6. * f * f - 6. * f) / h)
+                    + ra.cross(axis) * (3. * f * f - 4. * f + 1.)
+                    + ub * ((-6. * f * f + 6. * f) / h)
+                    + rb.cross(axis) * (3. * f * f - 2. * f);
+                let mut u = cubic - axis * cubic.dot(axis) + axis * linear.dot(axis);
+                let mut r = axis.cross(slope) + axis * (ra * (1. - f) + rb * f).dot(axis);
+                // Serial upstream elastic motion, as in the solver's TCP superposition.
+                for previous in beams.iter().take(index) {
+                    let tip = previous["nodes"].as_array().and_then(|v| v.last()).ok_or_else(|| error("previous beam tip missing"))?;
+                    let pr = read(&previous["tip_rotation_rad"])?;
+                    u += read(&previous["tip_displacement_mm"])? + pr.cross(centre - read(&tip["position_mm"])?);
+                    r += pr;
+                }
+                let displacement = u + r.cross(p - centre);
+                Ok((p + displacement * scale, r, displacement.len()))
+            };
+            let mut field = Vec::with_capacity(mesh.positions.len());
+            for (i, p) in mesh.positions.iter_mut().enumerate() {
+                let (position, rotation, magnitude) = transform(*p)?;
+                field.push(magnitude);
+                if let Some(normal) = mesh.normals.get_mut(i) {
+                    *normal = (*normal + rotation.cross(*normal) * scale).normalized().unwrap_or(*normal);
+                }
+                *p = position;
+                bounds.add(*p);
+            }
+            fields.push((out.meshes.len(), field));
+            out.meshes.push(SceneMesh::solid(Arc::new(mesh), palette.body_selected));
+        } else {
+            let mut reference = SceneMesh::solid(Arc::new(mesh), palette.body);
+            reference.opacity = 0.22;
+            out.meshes.push(reference);
+        }
+    }
+    if bounds.is_empty() {
+        return Err(error("no result geometry"));
+    }
+    if fields.len() != 2 {
+        return Err(error("both calculated beam bodies must be present in the CAD assembly"));
+    }
+    let maximum = fields.iter().flat_map(|(_, values)| values.iter()).copied().fold(0., f64::max);
+    for (mesh_index, values) in fields {
+        let display = out.meshes.get_mut(mesh_index).ok_or_else(|| error("display field missing"))?;
+        let mesh = Arc::make_mut(&mut display.mesh);
+        mesh.tri_face = mesh
+            .triangles
+            .iter()
+            .map(|triangle| {
+                let value = triangle.iter().filter_map(|i| values.get(*i as usize)).sum::<f64>() / 3.;
+                ((value / maximum.max(1e-30) * 31.).round().clamp(0., 31.)) as u32
+            })
+            .collect();
+        display.face_colors = (0..32)
+            .map(|band| {
+                let t = f64::from(band) / 31.;
+                let (a, b, f) = if t < 0.5 { (palette.axes[2], palette.axes[1], t * 2.) } else { (palette.axes[1], palette.axes[0], (t - 0.5) * 2.) };
+                let channel = |a: u8, b: u8| (f64::from(a) * (1. - f) + f64::from(b) * f).round() as u8;
+                (band, solidcraft_render::Rgb(channel(a.0, b.0), channel(a.1, b.1), channel(a.2, b.2)))
+            })
+            .collect();
+    }
+    out.radius = bounds.diagonal().max(1.);
+    Ok((out, bounds, maximum))
 }
 
 #[cfg(test)]

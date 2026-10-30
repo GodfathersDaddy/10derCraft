@@ -1,0 +1,4 @@
+# Optional standalone scientific worker. SolidCraft itself remains a Rust application.
+exudyn==1.13.6
+scipy==1.18.0
+numpy==2.5.4

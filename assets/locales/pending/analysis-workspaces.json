@@ -1,0 +1,38 @@
+{
+  "en": {
+    "ui.analysis.display_grid": "Show surface display grid",
+    "ui.analysis.grid_note": "This grid shows display triangles. The analysis still uses 1D beam elements, not volume elements.",
+    "ui.analysis.navigation_hint": "Rotate: right mouse drag. Zoom: mouse wheel. Other bindings follow CAD navigation preferences.",
+    "ui.analysis.interfaces": "Interfaces / loads",
+    "ui.analysis.solve": "Calculate arm",
+    "ui.analysis.results": "Results",
+    "ui.analysis.deformation": "Deformation (beam model)",
+    "ui.analysis.scale": "Displacement scale",
+    "ui.analysis.beam_caption": "Deformed arm beams; remaining CAD geometry is the undeformed reference. Locked actuators; no solid FEM.",
+    "ui.analysis.setup": "CAD / setup",
+    "ui.analysis.fit": "Fit result",
+    "ui.analysis.field_range": "Displacement magnitude: 0 .. {maximum} mm (blue / green / red)",
+    "ui.analysis.tcp_summary": "TCP: {tcp} mm | Display: x{scale}",
+    "ui.analysis.dynamics": "Drives, loads and calculation",
+    "ui.analysis.preview_pending": "CAD preview",
+    "ui.analysis.desktop_preview": "The deformation preview is currently available in the desktop app."
+  },
+  "de": {
+    "ui.analysis.display_grid": "Oberflächen-Darstellungsgitter anzeigen",
+    "ui.analysis.grid_note": "Das Gitter zeigt Darstellungsdreiecke. Die Rechnung verwendet weiterhin 1D-Balkenelemente, keine Volumenelemente.",
+    "ui.analysis.navigation_hint": "Drehen: rechte Maustaste ziehen. Zoom: Mausrad. Weitere Belegungen wie in den CAD-Navigationseinstellungen.",
+    "ui.analysis.interfaces": "Schnittstellen / Lasten",
+    "ui.analysis.solve": "Arm berechnen",
+    "ui.analysis.results": "Ergebnisse",
+    "ui.analysis.deformation": "Verformung (Balkenmodell)",
+    "ui.analysis.scale": "Verformungsfaktor",
+    "ui.analysis.beam_caption": "Verformte Armglieder; restliche CAD-Geometrie als unverformte Referenz. Aktuatoren gesperrt; keine Volumen-FEM.",
+    "ui.analysis.setup": "CAD / Vorbereitung",
+    "ui.analysis.fit": "Ergebnis einpassen",
+    "ui.analysis.field_range": "Verschiebungsbetrag: 0 .. {maximum} mm (blau / grün / rot)",
+    "ui.analysis.tcp_summary": "TCP: {tcp} mm | Anzeige: x{scale}",
+    "ui.analysis.dynamics": "Antriebe, Lasten und Berechnung",
+    "ui.analysis.preview_pending": "CAD-Vorschau",
+    "ui.analysis.desktop_preview": "Die Verformungsvorschau ist derzeit in der Desktop-Anwendung verfügbar."
+  }
+}

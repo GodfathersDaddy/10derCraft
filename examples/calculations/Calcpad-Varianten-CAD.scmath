@@ -1,0 +1,62 @@
+{
+  "calcpad": {
+    "backend": "CalcpadCE",
+    "dirty": false,
+    "evaluated_source": "'Bauteilberechnung - lokale Calcpad-Formeln\nL = 120mm\nB = L/3\nh = 5mm\nV = L*B*h",
+    "html": "<p id=\"line-1\" data-source-line=\"1\" class=\"line\">Bauteilberechnung - lokale Calcpad-Formeln </p>\r\n<p id=\"line-2\" data-source-line=\"2\" class=\"line\"><span class=\"eq\"><var>L</var> = 120 <i>mm</i></span></p>\r\n<p id=\"line-3\" data-source-line=\"3\" class=\"line\"><span class=\"eq\"><var>B</var> = <span class=\"dvc\"><var>L</var><span class=\"dvl\"></span>3</span> = <span class=\"dvc\">120 <i>mm</i><span class=\"dvl\"></span>3</span> = 40 <i>mm</i></span></p>\r\n<p id=\"line-4\" data-source-line=\"4\" class=\"line\"><span class=\"eq\"><var>h</var> = 5 <i>mm</i></span></p>\r\n<p id=\"line-5\" data-source-line=\"5\" class=\"line\"><span class=\"eq\"><var>V</var> = <var>L</var> · <var>B</var> · <var>h</var> = 120 <i>mm</i> · 40 <i>mm</i> · 5 <i>mm</i> = 24000 <i>mm</i><sup class=\"unit\">3</sup></span></p>\r\n",
+    "results": {
+      "B": {
+        "unit": "mm",
+        "value": 40
+      },
+      "L": {
+        "unit": "mm",
+        "value": 120
+      },
+      "V": {
+        "unit": "mm^3",
+        "value": 24000
+      },
+      "e": {
+        "unit": "",
+        "value": 2.718281828459045
+      },
+      "h": {
+        "unit": "mm",
+        "value": 5
+      },
+      "pi": {
+        "unit": "",
+        "value": 3.141592653589793
+      },
+      "π": {
+        "unit": "",
+        "value": 3.141592653589793
+      }
+    },
+    "source": "'Bauteilberechnung - lokale Calcpad-Formeln\nL = 120mm\nB = L/3\nh = 5mm\nV = L*B*h"
+  },
+  "definitions": [],
+  "format": "solidcraft-math/1",
+  "notes": "CalcpadCE -> CAD-Referenzen -> Skizze -> Extrusion. Allgemeines Bauteil, kein Getriebesonderfall.",
+  "title": "Lokale Berechnung und Varianten",
+  "variants": {
+    "active": "Variante 1 - kompakt",
+    "items": [
+      {
+        "calcpad": {
+          "source": "'Bauteilberechnung - lokale Calcpad-Formeln\nL = 120mm\nB = L/3\nh = 5mm\nV = L*B*h"
+        },
+        "definitions": [],
+        "name": "Variante 1 - kompakt"
+      },
+      {
+        "calcpad": {
+          "source": "'Bauteilberechnung - lokale Calcpad-Formeln\nL = 180mm\nB = L/3\nh = 5mm\nV = L*B*h"
+        },
+        "definitions": [],
+        "name": "Variante 2 - gross"
+      }
+    ]
+  }
+}

@@ -34,6 +34,7 @@ concurrency:
 
 jobs:
   regenerate:
+    if: github.repository == 'tangency-labs/solidcraft'
     name: Regenerate and commit
     runs-on: ubuntu-24.04
     timeout-minutes: 60

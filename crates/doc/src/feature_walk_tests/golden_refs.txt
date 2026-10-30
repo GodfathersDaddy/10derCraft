@@ -27,6 +27,7 @@ fillet_spline
   remap_bodies: body
 chamfer
   remap_bodies: body
+involute_gear
 box
 cylinder
 cylinder_references
