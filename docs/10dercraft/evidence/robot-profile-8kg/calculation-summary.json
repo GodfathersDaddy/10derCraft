@@ -1,0 +1,36 @@
+{
+  "scope": "Normal project calculations, not qualification tests",
+  "motion": {
+    "duration_s": 7.999999999999341,
+    "samples": 501,
+    "solver": "1.13.6",
+    "summary": {
+      "max_axis_alignment_error": 1.2641987897515905e-08,
+      "max_energy_change_j": 304.7433721838865,
+      "max_position_constraint_m": 1.9708081790251402e-09
+    }
+  },
+  "beam_fem": {
+    "tcp_deflection_mm": 0.11302431883919942,
+    "load_case": {
+      "actuators": "locked",
+      "force_world_n": [
+        -0.0,
+        -0.0,
+        -78.48
+      ],
+      "gravity_included": false,
+      "tcp_world_mm": [
+        1191.0,
+        0.0,
+        924.9999999999998
+      ]
+    },
+    "warnings": [
+      "Linear locked-actuator cylinder idealization; TCP local -Z force only. No gravity, joint/gearbox compliance, shear, contact, solid mesh, local notch stress or dynamic stress recovery.",
+      "Arm L/diameter <10: Euler-Bernoulli shear omission may be significant; use Timoshenko or solid FEM for design decisions.",
+      "Arm L/diameter <10: Euler-Bernoulli shear omission may be significant; use Timoshenko or solid FEM for design decisions."
+    ]
+  },
+  "open": "Detailed flexible arm ROMs, mechanically resolved bearings/gears/motor interfaces and physical qualification remain open."
+}
