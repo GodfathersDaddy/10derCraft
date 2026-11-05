@@ -1167,6 +1167,10 @@ fn check_design_numbers(v: &Value) -> Result<()> {
         if key == "metadata" {
             continue;
         }
+        if key == "fem_models" && !value.is_null() {
+            crate::document::check_fem_models(value)?;
+            continue;
+        }
         if key != "user_materials" {
             check_numbers(value, "design", 1)?;
             continue;

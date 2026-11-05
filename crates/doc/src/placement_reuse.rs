@@ -110,6 +110,7 @@ fn same_geometry_inputs(a: &Document, b: &Document) -> bool {
         metadata,
         // Solver output cannot drive a CAD feature; parameter changes remain compared.
         simulation_results: _,
+        fem_models: _,
         params,
         features,
         marker,

@@ -1901,3 +1901,110 @@ Der genaue Umfang samt Binärhash steht in
 `docs/10dercraft/evidence/focused-release.json`. Dieser Snapshot ist ein
 Forschungsprototyp mit gezielter Freigabe; eine vollständig grüne Gesamtprüfung
 wird nicht behauptet. Die FEM-Platte bleibt wie vereinbart ein späteres Beispiel.
+
+
+## 02.11.2026 – Volumen-FEM, Flächenanschlüsse und flexible MKS
+
+Fragestellung: Wie lassen sich assoziative CAD-Kraftübertragungsflächen als
+arbeitskonjugierte Schnittstellen einer lokalen Modellreduktion verwenden,
+ohne bei Änderungen oder starren Anbauteilen unbemerkt ein anderes Modell
+zu simulieren?
+
+Implementiert: ursprünglicher TET4/TET10-Solid-Solver mit konsistenter Masse,
+RBE2-Flächenrahmen, Hurty–Craig–Bampton und erster Fläche als FFRF-Referenz.
+Keine Übernahme fremden FEM-Quellcodes. NumPy/SciPy/Exudyn laufen lokal als
+begrenzte optionale Worker. Transparente CAD-Ansicht mit tatsächlich benannten
+Flächen in Rot; keine Ersatzkreise. Speicherung der FE-Netze und ROM-Basen
+in einem eigenen, größenbegrenzten COW-Dokumentfeld statt kleiner Metadaten.
+
+Methodische Entscheidung: Grobe lineare TET4-Modelle waren im Biegen zu steif.
+Deshalb quadratische TET10 mit exakt integrierter konsistenter Massenmatrix
+als Standard. Elementgeometrie bleibt geradkantig; keine Behauptung einer
+exakten Zylindergeometrie. CAD-/FE-Flächenabdeckung muss 95–105 % sein.
+Getrennte Baugruppennetze werden abgelehnt; Schrauben, Kontakt oder Klebung
+müssen explizit modelliert werden. Ein Teil-ROM ersetzt keine fehlenden
+starren Anbauteile seines CAD-Verbunds.
+
+Numerische Nachweise: 1-m-Stahlquader, 100-N-Querlast; TET10-Verfeinerung
+45/81/425 Knoten ergibt 0,016708/0,018145/0,018841 mm. Analytischer
+Euler–Bernoulli-Vergleich 0,019048 mm; ca. 1,08 % Abweichung im feinsten
+Referenznetz. Masse 78,5 kg, Kräftegleichgewicht, Nullenergie bei starrer
+Translation und konsistente translatorische Masse geprüft. Statischer
+ROM-/Voll-FEM-Verschiebungsfehler etwa 10⁻¹¹. Erste drei eingespannten
+Eigenfrequenzen: ROM-Abweichung ca. 0,0033 %, 0,0097 %, 0,073 %.
+Zusätzlicher Zylinderfall mit 1089 Knoten: polygonale Masse innerhalb 2 %.
+Überlappende Anschlüsse, gebrochene Elementindizes und getrennte Netze
+werden nicht als gültige Kopplung akzeptiert.
+
+Flexible Dynamik: echte Exudyn-FFRF-Objekte und SuperElementRigid-Marker an
+den reduzierten Flächennodes. Freier und getriebener Einzelkörper sowie zwei
+flexible Körper geprüft. Gelenkrestfehler werden am verformten Anschluss
+ausgewertet, nicht allein am starren Referenzrahmen. MKS-Replay rekonstruiert
+die FE-Oberfläche aus modalen Zuständen; die bisherige starre Ankerkorrektur
+wird bei flexiblen Ketten nicht angewendet. Die starre CAD-Geometrie wird
+weiterhin einmal auf die GPU geladen; nur begrenzte flexible Netze ändern sich.
+
+Native Integration: CAD → FEM → ROM → explizite flexible Blockbindung →
+normale MKS-Ausführung mit Gelenkkräften → PNG/AVI → Speichern/Öffnen →
+Längenänderung. Der vollständige Befehlsablauf bestand. Nach CAD-Änderung
+sind FEM und MKS historisch. Getestetes Beispiel und Messdaten liegen unter
+output/fem-rom-native; volle Solverreferenzen unter output/fem-rom.
+
+Grenzen der Evidenz: Referenzfälle sind keine allgemeine Validierung beliebiger
+Geometrien, Werkstoffe oder Anregungsbänder. Netz-, Moden- und Zeitschritt-
+Konvergenz sind getrennte Untersuchungen. RBE2 versteift Flächen; RBE3 und
+verteilte Drucklasten sind andere Modelle. Keine Plastizität, Kontakt,
+Schraubenvorspannung, Beulen oder große elastische Deformation. Die
+steifigkeitsproportionale Dämpfung entspricht 1 % an der ersten festgehaltenen
+Schnittstelleneigenfrequenz. Die Energie enthält Antriebsarbeit nicht als
+abgezogenen Bilanzterm; daher keine Energieerhaltungsbehauptung im Antriebsfall.
+
+Für die Dissertation: Flächensemantik und Lastarbeit, vollständige
+Bauteilabdeckung, Quellen-/Variantenkonsistenz, kontrollierte Invalidierung,
+RBE2/RBE3-Vergleich, Netz-/Modenkonvergenz, dynamische Vergleichsmodelle,
+experimentelle Modalanalyse und Kraftmessung untersuchen. Die reine
+Integration vorhandener Solver ist noch kein wissenschaftlicher Beitrag.
+Eine prüfbare Forschungsleistung kann die konsistente automatische Ableitung
+und Aktualisierung inklusive messbarer Fehler- und Gültigkeitskriterien sein.
+
+Reproduzierbare Skripte: tools/verify_fem_rom.py,
+tools/verify_flexible_assembly.py, tools/verify_fem_native.py und
+tools/verify_fem_rom_ui.py. Grafiken: output/fem-rom/ROM-Verifikation.png
+und .pdf. Ausführliche Methodik und Primärquellen: FEM_ROM_WORKFLOW.md.
+
+
+## 03.11.2026 - Zwei flexible Kranarme mit dynamischer Last
+
+Native Kette aus Fundament, zwei TET10/HCB-ROM-Auslegern, zwei Sinusantrieben und freier 20-kg-Pendellast aufgebaut. 2 s / 4000 Schritte / 1001 Ausgaben. Maximaler Gelenkpositionsrest 3,04e-10 m; Achsrest 1,36e-9. CAD-Flächen als reduzierte Ports; reale FFRF-Dynamik. Geometrieänderungen nach Modellanlage invalidieren korrekt das ROM; deshalb erst alle Schnittstellen erfassen, dann Modelle anlegen/reduzieren. Video und natives Projekt gespeichert.
+
+Frischer Prozess: Öffnen gespeicherter FEM-Matrizen, starre Rückfallberechnung und erneute flexible Bindung bestanden. Große SI-Steifigkeiten erhalten eigene begrenzte Zahlenvalidierung; CAD-Koordinatenschutz bleibt erhalten. Vier gezielte Dokumenttests bestanden. Lokaler Build installiert, keine vollständige CI behauptet.
+
+Grenze: vereinfachter Kran, keine vollständige detaillierte Roboterbaugruppe. Last ist bereits gelenkig befestigt; kein Greifen, Loslassen, Reibkontakt oder Aufsetzen. Netz-/Moden-/Zeitschrittkonvergenz dieses Bewegungsfalls steht aus. Aus unbelastetem elastischem Anfangszustand folgt ein physikalischer Einschwingvorgang. Ausbau und Abnahmekriterien: KRAN_FEM_ROM_STATUS.md.
+
+
+## 05.11.2026 - ROM-Bibliotheksblock und gemeinsame MKS-Bauteilhistorie
+
+Gemeinsame Bedienung erweitert. Ein ROM-Bibliothekseintrag ordnet vorhandene CAD-Körper zu, zeigt Reduktionsgrad und Quellenstatus, bindet flexible Modelle und öffnet deren FEM-Ergebnis. Die zeitabhängige Bauteilansicht übernimmt bei aktuellem Baugruppenlauf dessen modale Koordinaten und Referenzbewegung. Interpolation der Koordinaten erfolgt linear und die Referenzrotation über SLERP. Historische MKS-Ergebnisse werden ausgeschlossen. Monotone endliche Zeiten und zum ROM passende Koordinatendimensionen werden geprüft. Die UI zeigt die gewählte Ergebnisquelle. Zusammenfassungen und verfügbare Historien werden nach Dokumentrevision zwischengespeichert.
+
+Teilebibliothek um ein unabhängig konstruiertes Hersteller-Montagemodell 17HS19-2004S1 erweitert. Öffentliche Datenblattmaße, D-Welle und Montagebohrungen. 390 g über eine äquivalente homogene Dichte abgebildet, Hüllenträgheit als Modellannahme. Analytisches Volumen 85760,5489 mm³ gegenüber nativer Geometrie 85760,5006 mm³. Montage an einer Platte geprüft. Eine Motorfamilie in der CAD-Bibliothek ist von einer elektrischen bzw. drehmomentbegrenzten Antriebsmodellierung zu unterscheiden.
+
+Sechsachsarm an den Fundamentbefestigungen mit vier ISO-Scheiben und M16×80-Bolzen samt Durchgängen aufgebaut. Acht neue Hardwarekörper ausdrücklich auf Stahl gesetzt, Gesamtmasse 706,813 g. Vorhandener achtsekündiger Bewegungsablauf erneut gerechnet. Größter Positionsrest 2,181e-9 m, Achsrest 1,386e-8. Diese Werte betreffen Zwangsbedingungen. Sie validieren keine Tragfähigkeit oder vollständige flexible Detailbaugruppe. Kurze freie/getriebene FFRF-Referenzen sowie zwei flexible Körper erneut bestanden.
+
+Offene Forschungs-/Entwicklungsaufgabe bleibt die vollständige Domänenabdeckung der detaillierten Armgruppen einschließlich Verbindungen und starrer Anbauteile. Der bisherige automatische Volumenmesher verarbeitet primitive vollständige Einzelkörper. Die Datenübernahme darf keine fehlenden Motor-/Schraubenmassen verdecken. Reproduzierbare Skripte und Berichte stehen unter tools sowie docs/10dercraft/evidence/robot-rom. Methodische und technische Grenzen stehen in ROBOTER_ROM_WORKFLOW_STATUS.md.
+
+
+### Greifermotor und Adaptermontage vom 05.11.2026
+
+Hersteller-Montagemodell des NEMA17 auf nativer 4-mm-Aluminiumplatte am vorhandenen Greifer montiert. Wellenfreiraum, Zentrierbohrung, vier M3-Befestigungen und vier M4-Adapterbefestigungen mit Scheiben hergestellt. Freiräume für bestehende Führungen und Deckelschraubenköpfe ausgespart. Zwölf zusätzliche Normteilkomponenten aus der normalen Bibliothek, explizite Stahlzuweisung und starre CAD-Verbindungen. Geometrische Prüfung der nicht-gewindetragenden Passflächen bestanden. Der aktualisierte achtsekündige Sechsachslauf mit zusätzlicher starrer Motormasse ergab maximalen Positionsrest 2,168e-9 m. Fingertransmission, elektrische Motor-/Reglerdynamik, Festigkeit und flexible Detailarm-ROMs bleiben offen. Projekt und Berichte unter output/robot-gripper-motor sowie docs/10dercraft/evidence/robot-rom.
+
+
+### Zusaetzliche Startpruefung vom 05.11.2026
+
+Eine weitere isolierte Fensterstartpruefung blieb beim Grafikstart ohne erste UI-Antwort. Der Versuch wurde abgebrochen und die eigenen Pruefprozesse beendet. Dies ist eine offene Start-/Grafikdiagnose, kein bestandener Cold-Open-Nachweis. Vorherige Bibliotheks-, ROM- und native Montagepruefungen sind separat protokolliert. Eine vollstaendige CI wurde in diesem Durchlauf nicht ausgefuehrt.
+
+
+## 05.11.2026 - Christbaum-Baugruppe und GitHub-Zwischenstand
+
+34 vom Benutzer gelieferte STL-Druckteile anhand der Montagepositionen aus der zugehoerigen SCAD-Datei in native Komponenten eingeordnet. 23 radiale Schubgelenke, eine abhebbare Spitze, starre Etagen und eine Bewegungsstudie aufgebaut. Vor der spaeteren Testpause wurden 72 Positionen mit maximal 3,013e-12 mm Schwerpunkt-Verschiebungsfehler und 34 geschlossene Netze nachgewiesen. Das ist ein Montage-/Importnachweis. Parametrische BRep-Rekonstruktion, physischer Probedruck und vollstaendige Kollisionspruefung stehen aus.
+
+Die vollstaendige Abschlusspruefung passierte die statischen Gates und stoppte bei zwei Clippy-Hinweisen zu konstanten Dreiergruppen. Die Aufrufe wurden auf as_chunks::<3> umgestellt. Der Benutzer ordnete vor Veroeffentlichung an, fuer diesen Zwischenstand keine weiteren Tests auszufuehren. Danach wurden keine weiteren Testlaeufe gestartet. Die korrigierten Stellen und portablen Skriptpfade wurden nicht erneut geprueft. Details in ZWISCHENSTAND_2026-11-05.md.

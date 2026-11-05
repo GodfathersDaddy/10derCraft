@@ -265,7 +265,10 @@ pub fn inline(app: &mut SolveApp, ui: &mut egui::Ui, sample: usize, time: f64) -
     let Some(mut cache) = cache else { return false };
     if time != cache.last_time {
         let mut geometry = (*cache.geometry).clone();
-        for ((mesh, world), color) in geometry.instanced.iter_mut().zip(cache.data.worlds(time)).zip(cache.colors.iter()) {
+        for (index, ((mesh, world), color)) in geometry.instanced.iter_mut().zip(cache.data.worlds(time)).zip(cache.colors.iter()).enumerate() {
+            if let Some(deformed) = cache.data.elastic_mesh(index, time) {
+                mesh.tris = Arc::new(crate::gpu::SharedTris::new(&deformed));
+            }
             mesh.place(std::array::from_fn(|r| std::array::from_fn(|c| world[c][r] as f32)), *color);
         }
         let deltas = cache.data.deltas(time);

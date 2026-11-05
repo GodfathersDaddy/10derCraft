@@ -328,6 +328,50 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui, model: &Value) {
                 ui.label(m["name"].as_str().unwrap_or(""));
             }
             ui.label(format!("Ground: {}", block["grounded"]));
+            if block["grounded"] != true {
+                let create = ui.button(app.tr("ui.mks_rom.prepare_component"));
+                scenario::publish_handle(&format!("mks:rom:prepare:{id}"), create.rect.center());
+                if create.clicked() {
+                    crate::fem_rom_ui::prepare_block(app, ui.ctx(), &id);
+                }
+            }
+            let rom_key = key.with("rom_summary");
+            let cached = ui.ctx().data(|data| data.get_temp::<(u64, Value)>(rom_key));
+            let state = match cached {
+                Some((revision, state)) if revision == app.session.revision => Ok(state),
+                _ => app.session.execute("fem.model.read", &json!({})),
+            };
+            if let Ok(state) = state {
+                ui.ctx().data_mut(|data| data.insert_temp(rom_key, (app.session.revision, state.clone())));
+                for model in state["models"].as_array().into_iter().flatten().filter(|m| m["block"] == id) {
+                    let Some(model_id) = model["id"].as_str() else { continue };
+                    ui.separator();
+                    ui.strong(format!("ROM: {model_id}"));
+                    ui.label(app.tr(if model["current"] == true { "ui.fem_rom.current" } else { "ui.fem_rom.stale" }));
+                    ui.label(format!("{} → {} DOF", model["full_dofs"], model["reduced_dofs"]));
+                    let mut enabled = model["enabled"] == true;
+                    let toggle = ui.add_enabled(
+                        enabled || model["current"] == true && model["has_result"] == true,
+                        egui::Checkbox::new(&mut enabled, app.tr("ui.fem_rom.bind")),
+                    );
+                    scenario::publish_handle(&format!("mks:rom:bind:{model_id}"), toggle.rect.center());
+                    if toggle.changed()
+                        && let Err(error) = app.run("fem.mks.bind", json!({"id":model_id,"enabled":enabled}))
+                    {
+                        draft.error = error.to_string();
+                    }
+                    let results = ui.add_enabled(
+                        model["has_result"] == true && model["current"] == true,
+                        egui::Button::new(app.tr("ui.mks_rom.component_results")),
+                    );
+                    scenario::publish_handle(&format!("mks:rom:results:{model_id}"), results.rect.center());
+                    if results.clicked() {
+                        crate::fem_rom_ui::select_model(app, ui.ctx(), model_id);
+                        app.ui.project_page = "fem".into();
+                        app.ui.tab = "FEM / ROM".into();
+                    }
+                }
+            }
             if block["grounded"] == true {
                 ui.label(app.tr("ui.workspace.gravity"));
                 let mut gravity: [f64; 3] = serde_json::from_value(draft.settings["gravity_m_s2"].clone()).unwrap_or([0., 0., -9.81]);
@@ -1039,7 +1083,7 @@ fn graph(app: &SolveApp, ui: &mut egui::Ui, blocks: &[Value], joints: &[Value], 
                     draft.selected_body = Some(id.to_owned());
                 }
                 if let Some(kind) = response.dnd_release_payload::<String>() {
-                    if *kind == "force" {
+                    if *kind == "force" || *kind == "rom" {
                         draft.selected_body = Some(id.to_owned());
                     } else if *kind == "payload" {
                         let mut insert = crate::mks_library_ui::Insert::new("payload");
@@ -1053,13 +1097,24 @@ fn graph(app: &SolveApp, ui: &mut egui::Ui, blocks: &[Value], joints: &[Value], 
                 crate::mks_ui::block_picture(app, ui, block, Rect::from_min_size(rect.min + vec2(8., 5.), vec2(164., 66.)));
                 let names = block["members"].as_array().into_iter().flatten().filter_map(|m| m["name"].as_str()).collect::<Vec<_>>().join(" + ");
                 let clipped = painter.with_clip_rect(*rect);
-                clipped.text(
-                    rect.min + vec2(8., 85.),
-                    Align2::LEFT_CENTER,
-                    if block["grounded"] == true { "Ground" } else { block["id"].as_str().unwrap_or("") },
-                    FontId::proportional(13.),
-                    t.text,
-                );
+                let rom = app
+                    .session
+                    .doc
+                    .fem_models
+                    .as_ref()
+                    .and_then(|v| v["models"].as_object())
+                    .into_iter()
+                    .flatten()
+                    .find(|(_, m)| m["enabled"] == true && m["block"] == block["id"])
+                    .map(|(id, _)| id.as_str());
+                let title = if block["grounded"] == true {
+                    "Ground".to_owned()
+                } else if let Some(rom) = rom {
+                    crate::i18n::Locale::for_language(&app.preferences.language).format("ui.fem_rom.block_badge", &[("name", rom)])
+                } else {
+                    block["id"].as_str().unwrap_or_default().to_owned()
+                };
+                clipped.text(rect.min + vec2(8., 85.), Align2::LEFT_CENTER, title, FontId::proportional(13.), t.text);
                 clipped.text(rect.min + vec2(8., 108.), Align2::LEFT_CENTER, names, FontId::proportional(12.), t.text);
                 clipped.text(
                     rect.min + vec2(8., 130.),
@@ -1610,7 +1665,7 @@ fn library(app: &SolveApp, ui: &mut egui::Ui, blocks: &[Value], joints: &[Value]
     let search = draft.library.to_lowercase();
     egui::ScrollArea::vertical().show(ui, |ui| {
         for (category, entries) in [
-            ("bodies", vec!["world", "body", "payload"]),
+            ("bodies", vec!["world", "body", "payload", "rom"]),
             ("joints", vec!["rigid", "revolute", "slider"]),
             ("sources", vec!["independent", "controller", "motion", "cosine", "quintic", "sine"]),
             ("measurements", vec!["sensor", "position_sensor", "velocity_sensor"]),
@@ -1643,7 +1698,7 @@ fn library(app: &SolveApp, ui: &mut egui::Ui, blocks: &[Value], joints: &[Value]
                                         ui.horizontal(|ui| {
                                             let icon = match kind {
                                                 "world" => "render_ground",
-                                                "body" | "payload" => "component",
+                                                "body" | "payload" | "rom" => "component",
                                                 "rigid" => "rigid_group",
                                                 "revolute" => "joint",
                                                 "slider" => "move",
@@ -1712,6 +1767,9 @@ fn released_over(ui: &egui::Ui, rect: Rect) -> bool {
 fn insert_kind(draft: &mut Draft, kind: &str, blocks: &[Value]) {
     draft.quick_insert = false;
     match kind {
+        "rom" => {
+            draft.selected_body = blocks.iter().find(|b| b["grounded"] != true).and_then(|b| b["id"].as_str()).map(str::to_owned);
+        }
         "independent" => draft.diagram.new_source(),
         "motion" | "sensor" | "position_sensor" | "velocity_sensor" | "cosine" | "quintic" | "sine" => draft.pending_target = Some(kind.to_owned()),
         "controller" => {

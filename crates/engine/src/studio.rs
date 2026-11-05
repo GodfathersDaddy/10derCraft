@@ -25,6 +25,9 @@ pub struct State {
     pub backend_job: Option<Value>,
     #[serde(default)]
     pub backend_result: Option<Value>,
+    /// Transient inspection only: never changes CAD appearances or analysis inputs.
+    #[serde(default)]
+    pub interface_preview: bool,
 }
 
 impl Default for State {
@@ -46,6 +49,7 @@ impl Default for State {
             beam_result: None,
             backend_job: None,
             backend_result: None,
+            interface_preview: false,
         }
     }
 }

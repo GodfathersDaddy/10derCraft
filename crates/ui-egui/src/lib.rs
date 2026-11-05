@@ -65,6 +65,7 @@ pub mod edit_clipboard;
 pub mod edit_in_place;
 pub mod engineering_studio;
 mod feature_edit;
+mod fem_rom_ui;
 #[cfg(test)]
 mod font_literals_tests;
 pub mod fonts;
@@ -625,7 +626,7 @@ pub struct SolveApp {
     /// The file brought more than one body or a component tree: the offer says "assembly".
     pub stand_up_assembly: bool,
     /// The offer is the small note over the view, not the dialog (a file from a program not known
-    /// to save Y up, Preferences › Design, #7717).
+    /// to save Y up, Preferences â€º Design, #7717).
     pub stand_up_note: bool,
     /// When the note was first drawn (the window's clock), or since the pointer was last on it; it
     /// goes after `stand_up::NOTE_SECONDS`.
@@ -945,7 +946,7 @@ impl SolveApp {
         self.msaa_supported = rs.msaa_supported.clone();
         let info = rs.adapter.get_info();
         self.help.gpu = Some(format!("{} ({:?}, {:?})", info.name.trim(), info.backend, info.device_type));
-        self.viewport.adapter = format!("{:?} · {}", info.backend, info.name);
+        self.viewport.adapter = format!("{:?} Â· {}", info.backend, info.name);
     }
 
     /// Preferences kept between runs (JSON), for the host to store.
@@ -1073,7 +1074,7 @@ impl SolveApp {
         if self.file_load.busy() || self.file_picker.is_some() || self.saving.is_some() {
             return Err("a file operation is in progress".into());
         }
-        // Commands may start only detected slicers and the programs the user added under Custom….
+        // Commands may start only detected slicers and the programs the user added under Customâ€¦.
         if matches!(id, "file.save_mesh" | "file.send_to_slicer") {
             solidcraft_engine::slicers::set_chosen_programs(&self.preferences.custom_slicers);
         }
@@ -1473,11 +1474,11 @@ impl SolveApp {
             self.repeat_last();
             return;
         }
-        // Front … Isometric (Ctrl+1…7 by default) turn the view as the view cube's faces do. The
+        // Front â€¦ Isometric (Ctrl+1â€¦7 by default) turn the view as the view cube's faces do. The
         // flat pattern is a 2D page: it has no other side to turn to.
         if solidcraft_engine::standard_view(id).is_some() {
             if !dialogs_sheet::flat_active(self) {
-                // `view.isometric` → "isometric", which `StandardView::parse` reads as Iso.
+                // `view.isometric` â†’ "isometric", which `StandardView::parse` reads as Iso.
                 self.animate_view(id.trim_start_matches("view."));
                 self.home.open = false;
             }
@@ -1657,7 +1658,7 @@ impl SolveApp {
             return;
         }
         if id == "component.insert_design" {
-            // The designs open in other tabs first, each a click away, then Browse… (#8570).
+            // The designs open in other tabs first, each a click away, then Browseâ€¦ (#8570).
             if self.preferences.insert_lists_open_designs && !documents::other_designs(self).is_empty() {
                 if let Some(rect) = opener {
                     context_menu::toggle_for(self, rect, rect.left_bottom(), context_menu::Target::InsertDesign);
@@ -1714,7 +1715,7 @@ impl SolveApp {
             bom_panel::open(self);
             return;
         }
-        // Inspect → Measure → Properties: the window, not a reply nobody sees (#8095).
+        // Inspect â†’ Measure â†’ Properties: the window, not a reply nobody sees (#8095).
         if matches!(id, "component.properties" | "occurrence.properties") {
             design_properties::open_selected(self);
             return;
@@ -2284,7 +2285,7 @@ impl SolveApp {
         if !to.is_valid() {
             return;
         }
-        // Preferences › Navigation: animated (at a chosen speed) or immediate.
+        // Preferences â€º Navigation: animated (at a chosen speed) or immediate.
         if !self.preferences.look_at_anim {
             self.cam = to;
             self.cam_anim = None;
@@ -2461,6 +2462,7 @@ impl SolveApp {
         self.step_view_animation(ctx);
         self.poll_control_jobs(ctx);
         self.drain_control(ctx);
+        fem_rom_ui::poll(self, ctx);
         self.follow_view_request(true);
         agent_cursor::step(self, ctx);
         if !self.synthetic.is_empty() {
@@ -2614,7 +2616,7 @@ impl SolveApp {
         network_prompt::show(self, ui.ctx());
         update::show(self, ui.ctx());
         install::show(self, ui.ctx());
-        // Settings › AI's Add agent dialog: Settings opens over Home too (#3483).
+        // Settings â€º AI's Add agent dialog: Settings opens over Home too (#3483).
         if agent_chat::shown(self) {
             agent_chat::settings::dialog(self, ui.ctx());
         }
@@ -2640,11 +2642,21 @@ impl SolveApp {
         }
         if self.ui.project_page == "fem" {
             engineering_studio::fem_ribbon(self, ui);
+            if self.session.studio.interface_preview {
+                robot_ui::deformation_workspace(self, ui);
+                engineering_studio::show_dialogs(self, ui.ctx());
+                return;
+            }
             if ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new(("fem_results_visible", self.docs.active)))).unwrap_or(false) {
                 robot_ui::deformation_workspace(self, ui);
                 engineering_studio::show_dialogs(self, ui.ctx());
                 return;
             }
+        }
+        if self.ui.project_page == "cad" && self.session.studio.interface_preview {
+            robot_ui::deformation_workspace(self, ui);
+            engineering_studio::show_dialogs(self, ui.ctx());
+            return;
         }
         let floating =
             self.ui.project_page != "fem" && (render_workspace::active(self) || ui_kit::Container::new(ui.ctx(), ui_kit::Surface::Panel).floating());
@@ -2969,7 +2981,7 @@ pub fn command_label(id: &str) -> &str {
     solidcraft_engine::find_command(id).map_or(id, |c| c.label)
 }
 
-/// An engine error with the command's label instead of its id: "Shell: offset must be …".
+/// An engine error with the command's label instead of its id: "Shell: offset must be â€¦".
 /// The command label and catalogued engine messages follow the interface language.
 pub fn friendly_error(id: &str, e: &str) -> String {
     let label = i18n::tr_label(command_label(id));

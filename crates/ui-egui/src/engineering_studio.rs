@@ -23,7 +23,7 @@ pub fn page_for_tab(tab: &str) -> Option<&'static str> {
 pub fn tab_for_page(page: &str) -> &'static str {
     match page {
         "system" => "MBS",
-        "fem" => "FEM / ROM",
+        "fem" | "fem_rom" => "FEM / ROM",
         "interfaces" => "INTERFACES",
         "parameters" => "WORKSHEET",
         "variants" => "VARIANTS",
@@ -252,7 +252,7 @@ pub fn show_dialogs(app: &mut SolveApp, ctx: &egui::Context) {
     let title = match page.as_str() {
         "cad_mks" => "CAD → MKS",
         "system" => "Mehrkörpermodell",
-        "fem" => "FEM / ROM",
+        "fem" | "fem_rom" => "FEM / ROM",
         "interfaces" => "Mechanischer Anschluss",
         "variants" => "Varianten",
         "studies" => "Referenzstudien",
@@ -262,13 +262,14 @@ pub fn show_dialogs(app: &mut SolveApp, ctx: &egui::Context) {
     let open = true;
     let closed = crate::ui_kit::Window::new(egui::Id::new(("engineering_tool_window", &page)), "graph", title)
         .cards(if page == "interfaces" { 1.5 } else { 3. })
-        .page_rows(if page == "cad_mks" { 36. } else { 24. })
+        .page_rows(if page == "cad_mks" || page == "fem_rom" { 32. } else { 24. })
         .show_body(ctx, |ui| {
             scenario::publish_handle("studio:dialog:open", ui.min_rect().center());
             match page.as_str() {
                 "cad_mks" => crate::mks_interfaces_ui::show(app, ui),
                 "system" => system(app, ui),
                 "fem" => fem(app, ui),
+                "fem_rom" => crate::fem_rom_ui::show(app, ui),
                 "interfaces" => {
                     crate::mechanics_ui::show(app, ui, false);
                     if app.session.studio.enabled {
@@ -666,12 +667,27 @@ pub fn fem_ribbon(app: &mut SolveApp, ui: &mut egui::Ui) {
             ui.spacing_mut().interact_size.y = t.form_button_height + t.space_8;
             ui.horizontal_wrapped(|ui| {
                 ui.heading("FEM");
-                if crate::ui_kit::button(ui, app.tr("ui.analysis.interfaces"), crate::ui_kit::Button::Normal).clicked() {
-                    app.ui.engineering_dialog = Some("interfaces".into());
+                let b = ui.button(app.tr("ui.fem_rom.open"));
+                scenario::publish_handle("fem:rom:open", b.rect.center());
+                if b.clicked() {
+                    app.ui.engineering_dialog = Some("fem_rom".into());
                 }
-                let run = crate::ui_kit::button(ui, app.tr("ui.analysis.solve"), crate::ui_kit::Button::Normal);
+                let mut preview = app.session.studio.interface_preview;
+                let r = ui.checkbox(&mut preview, app.tr("ui.fem_rom.interfaces"));
+                scenario::publish_handle("fem:interfaces:toggle", r.rect.center());
+                if r.changed() {
+                    let _ = app.run("mks.interface.display", json!({"enabled":preview}));
+                }
+                if crate::ui_kit::button(ui, app.tr("ui.analysis.interfaces"), crate::ui_kit::Button::Normal).clicked() {
+                    app.ui.engineering_dialog = Some("cad_mks".into());
+                }
+                let run = ui.add_enabled(
+                    app.session.doc.metadata.get("org.solidcraft.robot-workflow").is_some(),
+                    egui::Button::new(app.tr("ui.fem_rom.beam")),
+                );
                 scenario::publish_handle("fem:workspace:solve", run.rect.center());
                 if run.clicked() {
+                    crate::fem_rom_ui::select_beam(app, ui.ctx());
                     let _ = app.run("robot.fem.solve", json!({"elements":16}));
                 }
                 let results = crate::ui_kit::button(ui, app.tr("ui.analysis.results"), crate::ui_kit::Button::Normal);

@@ -1,0 +1,10 @@
+{
+  "passed": true,
+  "project": "C:\\Users\\TobiZehn\\Desktop\\04_Persoenliches\\10derCraft\\output\\crane-flexible\\Kran-Zwei-Flexible-Arme.solidcraft",
+  "summary": {
+    "max_axis_alignment_error": 1.3519114002885888e-09,
+    "max_energy_change_j": 1713.3455515754933,
+    "max_position_constraint_m": 3.0317153736563756e-10
+  },
+  "scope": "two flexible native beams, two prescribed drives, 20kg pendulating payload; no grip/contact"
+}

@@ -1,0 +1,10 @@
+{
+  "passed": true,
+  "steel_hardware_bodies": 8,
+  "hardware_mass_g": 706.8134545367993,
+  "summary": {
+    "max_axis_alignment_error": 1.3855659823726039e-08,
+    "max_energy_change_j": 405.82702567263937,
+    "max_position_constraint_m": 2.1806934551496192e-09
+  }
+}

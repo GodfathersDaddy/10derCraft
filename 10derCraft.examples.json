@@ -2,6 +2,30 @@
   "schema": "10dercraft.examples/1",
   "examples": [
     {
+      "id": "flexarm-rom",
+      "title": "Flexarm FEM-ROM-MKS",
+      "path": "examples/projects/Flexarm-FEM-ROM-MKS.solidcraft",
+      "description": "Native CAD-Schnittstellen, Volumen-FEM, Reduktion und flexible Mehrkoerpersimulation"
+    },
+    {
+      "id": "crane-two-rom",
+      "title": "Kran mit zwei flexiblen Armen",
+      "path": "examples/projects/Kran-Zwei-Flexible-Arme.solidcraft",
+      "description": "Zwei Volumen-FEM/ROM-Koerper, vorgeschriebene Bewegung und pendelnde Last"
+    },
+    {
+      "id": "robot-motor-rom",
+      "title": "Roboter mit Greifermotor und Normteilen",
+      "path": "examples/projects/Roboter-Parameter-Motor-Normteile.solidcraft",
+      "description": "Parametrisierter Sechsachsarm, montierter NEMA17-Greifermotor, Adapterplatte und native Normteile"
+    },
+    {
+      "id": "christbaum-adventkalender",
+      "title": "Christbaum-Adventkalender",
+      "path": "examples/projects/Christbaum-Adventkalender.solidcraft",
+      "description": "34 Druckteile, 23 radiale Schubladen und abhebbare Sternspitze mit nativen Baugruppengelenken"
+    },
+    {
       "id": "robot-drag-workflow",
       "title": "Roboter – Drag-and-drop und feine Simulation",
       "path": "examples/projects/Roboter-DragDrop-Workflow.solidcraft",

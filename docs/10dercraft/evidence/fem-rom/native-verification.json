@@ -1,0 +1,10 @@
+{
+  "passed": true,
+  "seconds": 10.850737699998717,
+  "summary": {
+    "max_axis_alignment_error": 3.77718844897788e-27,
+    "max_energy_change_j": 573.1876675058822,
+    "max_position_constraint_m": 9.813077866773595e-18
+  },
+  "project": "C:\\Users\\TobiZehn\\Desktop\\04_Persoenliches\\10derCraft\\output\\fem-rom-native\\Flexarm-FEM-ROM-MKS.solidcraft"
+}

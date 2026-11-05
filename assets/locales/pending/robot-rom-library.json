@@ -1,0 +1,16 @@
+{
+  "en": {
+    "parts.family.stepper_motor": "Stepper motor mounting model",
+    "ui.mks_rom.component_results": "Open component FEM / ROM",
+    "ui.mks_rom.prepare_component": "Create component FEM / ROM",
+    "ui.mks_ext.block.rom": "Flexible body / ROM",
+    "ui.mks_rom.motion_result": "Deformation from current assembly MKS"
+  },
+  "de": {
+    "parts.family.stepper_motor": "Schrittmotor-Montagemodell",
+    "ui.mks_rom.component_results": "Bauteil-FEM / ROM öffnen",
+    "ui.mks_rom.prepare_component": "Bauteil-FEM / ROM anlegen",
+    "ui.mks_ext.block.rom": "Flexibler Körper / ROM",
+    "ui.mks_rom.motion_result": "Verformung aus aktueller Baugruppen-MKS"
+  }
+}

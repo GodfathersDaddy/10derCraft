@@ -83,12 +83,13 @@ fn default_profile() -> String {
 fn default_frequency() -> f64 {
     1.
 }
-pub(super) fn snapshot(s: &Session) -> Result<Value> {
+pub(super) fn physical_snapshot(s: &Session) -> Result<Value> {
     if !s.model.param_errors.is_empty() || s.model.results.iter().any(|r| r.error.is_some() || r.stale) {
         return Err(error("repair CAD feature/parameter errors before dynamics"));
     }
     let mut physical = (*s.placed_document()).clone();
     physical.simulation_results = None;
+    physical.fem_models = None;
     let mut source = serde_json::to_value(&physical).map_err(|e| error(e.to_string()))?;
     // Saving an untitled design assigns its filename as title; this is not a physical edit.
     if let Some(map) = source.as_object_mut() {
@@ -116,6 +117,11 @@ pub(super) fn snapshot(s: &Session) -> Result<Value> {
     } else {
         Ok(json!({"document":source}))
     }
+}
+pub(super) fn snapshot(s: &Session) -> Result<Value> {
+    let physical = physical_snapshot(s)?;
+    let bindings = super::fem_rom::bindings(s);
+    if bindings.is_empty() { Ok(physical) } else { Ok(json!({"cad":physical,"flexible_components":bindings})) }
 }
 fn array(v: &Value) -> &[Value] {
     v.as_array().map(Vec::as_slice).unwrap_or(&[])
@@ -164,7 +170,11 @@ fn build(s: &mut Session, p: &Value) -> Result<Value> {
             if !settings.allow_assumed_density && array(&physical["bodies"]).iter().any(|b| b["density_assumed"] == true) {
                 return Err(error(format!("{id}: assign material or explicitly allow assumed CAD density")));
             }
-            bodies.push(json!({"id":id,"mass_kg":physical["mass_kg"],"com_world_m":physical["com_world_m"],"inertia_com_world_kg_m2":physical["inertia_com_world_kg_m2"]}));
+            let mut body = json!({"id":id,"mass_kg":physical["mass_kg"],"com_world_m":physical["com_world_m"],"inertia_com_world_kg_m2":physical["inertia_com_world_kg_m2"]});
+            if let Some(component) = super::fem_rom::binding(s, b)? {
+                body["flexible_component"] = json!(component);
+            }
+            bodies.push(body);
         }
         for port in array(&b["ports"]) {
             ports.insert(text(&port["port"]["id"])?.to_owned(), (id.to_owned(), port.clone()));
@@ -308,7 +318,7 @@ fn build(s: &mut Session, p: &Value) -> Result<Value> {
         }
     }
     Ok(
-        json!({"schema":"solidcraft.assembly-job/1","backend":"exudyn_rigid_open_chain","settings":settings,"source":source,"model":{"ground":ground,"bodies":bodies,"joints":joints,"loads":loads,"drivers":drivers}}),
+        json!({"schema":"solidcraft.assembly-job/1","backend":if super::fem_rom::bindings(s).is_empty(){"exudyn_rigid_open_chain"}else{"exudyn_ffrf_open_chain"},"settings":settings,"source":source,"model":{"ground":ground,"bodies":bodies,"joints":joints,"loads":loads,"drivers":drivers}}),
     )
 }
 fn save(s: &mut Session, job: Value, result: Option<Value>) -> Result<Value> {
@@ -357,6 +367,17 @@ fn validate(job: &Value, result: &Value) -> Result<Value> {
         let poses = trajectories.get(id).ok_or_else(|| error("missing body trajectory"))?;
         if !finite_rows(poses, 12) {
             return Err(error("invalid body poses"));
+        }
+        if let Some(component) = b["flexible_component"].as_str() {
+            let f = &result["flexible_states"][id];
+            let modes = f["modal_coordinates"].as_array().and_then(|a| a.first()).and_then(Value::as_array).map(Vec::len).unwrap_or(0);
+            if f["component_id"] != component
+                || !(1..=72).contains(&modes)
+                || !finite_rows(&f["modal_coordinates"], modes)
+                || !finite_rows(&f["reference_poses"], 12)
+            {
+                return Err(error("missing/invalid flexible component states"));
+            }
         }
         for row in array(poses) {
             let at = |r: usize, c: usize| row.get(3 + r * 3 + c).and_then(Value::as_f64).unwrap_or(f64::NAN);
@@ -420,7 +441,7 @@ fn run(s: &mut Session, p: &Value) -> Result<Value> {
     let stored = s.doc.metadata.get(KEY);
     let prepared = if let Some(data) = stored
         && data["job"]["schema"] == "solidcraft.assembly-job/1"
-        && data["job"]["backend"] == "exudyn_rigid_open_chain"
+        && ["exudyn_rigid_open_chain", "exudyn_ffrf_open_chain"].iter().any(|b| data["job"]["backend"] == *b)
         && serde_json::from_value::<Settings>(data["job"]["settings"].clone()).is_ok_and(|v| v == settings)
         && data["job"]["source"] == snapshot(s)?
     {
@@ -439,7 +460,7 @@ fn run(s: &mut Session, p: &Value) -> Result<Value> {
         Some(job) => job,
         None => build(s, &inputs)?,
     };
-    let result = super::mks_local::execute(&job)?;
+    let result = super::mks_local::execute(&super::fem_rom::worker_job(s, &job)?)?;
     let compact = validate(&job, &result)?;
     save(s, job, Some(compact.clone()))?;
     let mut reply = compact;

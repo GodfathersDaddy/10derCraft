@@ -41,7 +41,7 @@ fn pose(s: &mut Session, p: &Value) -> Result<Value> {
     }
     Ok(
         json!({"time_s":p.time_s,"transforms":replay.meshes.iter().zip(replay.worlds(p.time_s)).map(|(mesh,world)|json!({"source":mesh.source,"world":world})).collect::<Vec<_>>(),
-        "interpolation":"joint_relative_slerp_anchor_preserving","cad_changed":false}),
+        "interpolation":if replay.elastic.is_empty(){"joint_relative_slerp_anchor_preserving"}else{"reference_slerp_modal_linear"},"cad_changed":false}),
     )
 }
 
@@ -72,12 +72,17 @@ pub struct ReplayPort {
     pub axes: [Vec3; 3],
 }
 pub struct AssemblyReplay {
+    elastic: std::collections::BTreeMap<usize, Elastic>,
     times: Vec<f64>,
     pub meshes: Vec<ReplayMesh>,
     pub ports: Vec<ReplayPort>,
     pub bounds: Aabb3,
     blocks: Vec<Block>,
     links: Vec<Link>,
+}
+struct Elastic {
+    basis: Vec<Vec<f64>>,
+    states: Vec<Vec<f64>>,
 }
 fn error(message: impl Into<String>) -> crate::EngineError {
     bad("mks.replay", message)
@@ -97,7 +102,15 @@ pub fn prepare(s: &mut Session) -> Result<AssemblyReplay> {
         return Err(error("invalid replay times"));
     }
     let native = s.model.state();
-    let mut out = AssemblyReplay { times, meshes: Vec::new(), ports: Vec::new(), blocks: Vec::new(), links: Vec::new(), bounds: Aabb3::EMPTY };
+    let mut out = AssemblyReplay {
+        elastic: Default::default(),
+        times,
+        meshes: Vec::new(),
+        ports: Vec::new(),
+        blocks: Vec::new(),
+        links: Vec::new(),
+        bounds: Aabb3::EMPTY,
+    };
     let mut triangles = 0;
     for (index, block) in graph["blocks"].as_array().into_iter().flatten().enumerate() {
         let mut item = Block { com: Vec3::ZERO, poses: Vec::new() };
@@ -128,31 +141,63 @@ pub fn prepare(s: &mut Session) -> Result<AssemblyReplay> {
             }
         }
         out.blocks.push(item);
-        for placed in block["bodies"].as_array().into_iter().flatten() {
-            let body = native
-                .bodies
-                .iter()
-                .find(|b| Some(b.name.as_str()) == placed["source"].as_str() && Some(s.doc.model_body_component(b)) == placed["component"].as_u64())
-                .ok_or_else(|| error("CAD source missing"))?;
-            let mesh = body.mesh();
-            triangles += mesh.triangles.len();
-            if triangles > 100_000 || mesh.positions.len() > 500_000 {
-                return Err(error("replay geometry exceeds preview limit"));
+        let block_id = block["id"].as_str().ok_or_else(|| error("block id missing"))?;
+        let elastic = &data["result"]["flexible_states"][block_id];
+        if let Some(id) = elastic["component_id"].as_str() {
+            let record = s.doc.fem_models.as_ref().and_then(|v| v["models"].get(id)).ok_or_else(|| error("ROM missing for flexible replay"))?;
+            let r = &record["result"];
+            let positions: Vec<Vec3> = serde_json::from_value(r["nodes_mm"].clone()).map_err(|e| error(e.to_string()))?;
+            let triangles: Vec<[u32; 3]> = serde_json::from_value(r["surface_triangles"].clone()).map_err(|e| error(e.to_string()))?;
+            let basis: Vec<Vec<f64>> = serde_json::from_value(r["rom"]["basis"].clone()).map_err(|e| error(e.to_string()))?;
+            let states: Vec<Vec<f64>> = serde_json::from_value(elastic["modal_coordinates"].clone()).map_err(|e| error(e.to_string()))?;
+            if positions.len() > 1500
+                || basis.len() != 3 * positions.len()
+                || states.len() != out.times.len()
+                || triangles.iter().flatten().any(|i| *i as usize >= positions.len())
+                || states.iter().any(|q| q.is_empty() || q.len() > 72 || q.iter().any(|v| !v.is_finite()))
+                || basis.iter().any(|v| v.len() != states[0].len() || v.iter().any(|v| !v.is_finite()))
+            {
+                return Err(error("invalid flexible replay matrices"));
             }
-            let color = s
-                .doc
-                .body_color(body)
-                .map(|c| Rgb((c[0] * 255.).round() as u8, (c[1] * 255.).round() as u8, (c[2] * 255.).round() as u8))
-                .unwrap_or(crate::view::Palette::DEFAULT.body);
+            let mesh = Mesh { positions, triangles, ..Default::default() };
+            out.elastic.insert(index, Elastic { basis, states });
             out.meshes.push(ReplayMesh {
-                source: body.name.clone(),
-                mesh,
-                color,
+                source: id.into(),
+                mesh: Arc::new(mesh),
+                color: crate::view::Palette::DEFAULT.body,
                 block: index,
-                world: serde_json::from_value(placed["world"].clone()).map_err(|e| error(e.to_string()))?,
+                world: IDENTITY,
             });
         }
-        for p in block["ports"].as_array().into_iter().flatten() {
+        if !out.elastic.contains_key(&index) {
+            for placed in block["bodies"].as_array().into_iter().flatten() {
+                let body = native
+                    .bodies
+                    .iter()
+                    .find(|b| {
+                        Some(b.name.as_str()) == placed["source"].as_str() && Some(s.doc.model_body_component(b)) == placed["component"].as_u64()
+                    })
+                    .ok_or_else(|| error("CAD source missing"))?;
+                let mesh = body.mesh();
+                triangles += mesh.triangles.len();
+                if triangles > 100_000 || mesh.positions.len() > 500_000 {
+                    return Err(error("replay geometry exceeds preview limit"));
+                }
+                let color = s
+                    .doc
+                    .body_color(body)
+                    .map(|c| Rgb((c[0] * 255.).round() as u8, (c[1] * 255.).round() as u8, (c[2] * 255.).round() as u8))
+                    .unwrap_or(crate::view::Palette::DEFAULT.body);
+                out.meshes.push(ReplayMesh {
+                    source: body.name.clone(),
+                    mesh,
+                    color,
+                    block: index,
+                    world: serde_json::from_value(placed["world"].clone()).map_err(|e| error(e.to_string()))?,
+                });
+            }
+        }
+        for p in block["ports"].as_array().into_iter().flatten().filter(|_| !out.elastic.contains_key(&index)) {
             out.ports.push(ReplayPort {
                 block: index,
                 origin: vector(&p["frame"]["origin"])?,
@@ -237,7 +282,7 @@ impl AssemblyReplay {
                 matrix
             })
             .collect();
-        if u > 0. && u < 1. {
+        if u > 0. && u < 1. && self.elastic.is_empty() {
             let first = self.raw_deltas(a);
             let last = self.raw_deltas(b);
             for link in &self.links {
@@ -292,6 +337,33 @@ impl AssemblyReplay {
     pub fn worlds(&self, time: f64) -> Vec<Mat> {
         let deltas = self.deltas(time);
         self.meshes.iter().map(|m| mat_mul(deltas.get(m.block).unwrap_or(&IDENTITY), &m.world)).collect()
+    }
+    /// Bounded CPU reconstruction of the FE surface; rigid CAD meshes remain
+    /// uploaded once. Interpolation changes the view, never solver histories.
+    pub fn elastic_mesh(&self, index: usize, time: f64) -> Option<Mesh> {
+        let source = self.meshes.get(index)?;
+        let elastic = self.elastic.get(&source.block)?;
+        let a = self.times.partition_point(|t| *t <= time).saturating_sub(1).min(self.times.len() - 1);
+        let b = (a + 1).min(self.times.len() - 1);
+        let u = if a == b { 0. } else { ((time - self.times[a]) / (self.times[b] - self.times[a])).clamp(0., 1.) };
+        let q: Vec<_> = elastic.states[a].iter().zip(&elastic.states[b]).map(|(a, b)| a * (1. - u) + b * u).collect();
+        let values: Vec<_> = elastic.basis.iter().map(|row| row.iter().zip(&q).map(|(v, q)| v * q).sum::<f64>() * 1000.).collect();
+        let mut mesh = (*source.mesh).clone();
+        for (p, v) in mesh.positions.iter_mut().zip(values.as_chunks::<3>().0) {
+            *p += Vec3::new(v[0], v[1], v[2]);
+        }
+        mesh.normals = vec![Vec3::ZERO; mesh.positions.len()];
+        for t in &mesh.triangles {
+            let [a, b, c] = t.map(|i| mesh.positions[i as usize]);
+            let n = (b - a).cross(c - a);
+            for i in t {
+                mesh.normals[*i as usize] += n;
+            }
+        }
+        for n in &mut mesh.normals {
+            *n = n.normalized().unwrap_or(Vec3::Z);
+        }
+        Some(mesh)
     }
 }
 fn relative_rotation(parent: &Mat, child: &Mat) -> Quat {

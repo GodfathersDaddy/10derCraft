@@ -51,6 +51,12 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui) {
         }
     });
     ui.add(egui::Label::new(app.tr("ui.mks_cad.workflow")).wrap());
+    let mut preview = app.session.studio.interface_preview;
+    let toggle = ui.checkbox(&mut preview, app.tr("ui.fem_rom.interfaces"));
+    scenario::publish_handle("mks:cad:highlight", toggle.rect.center());
+    if toggle.changed() {
+        let _ = app.run("mks.interface.display", json!({"enabled":preview}));
+    }
     ui.separator();
     ui.horizontal(|ui| {
         for (tab, label) in ["ui.mks_cad.tab_capture", "ui.mks_cad.tab_joint", "ui.mks_cad.tab_overview"].iter().enumerate() {

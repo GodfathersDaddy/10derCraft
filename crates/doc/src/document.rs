@@ -19,12 +19,53 @@ fn read_simulation_results<'de, D: serde::Deserializer<'de>>(d: D) -> std::resul
     }
     Ok(value.map(std::sync::Arc::new))
 }
+fn read_fem_models<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Option<std::sync::Arc<serde_json::Value>>, D::Error> {
+    let value = Option::<serde_json::Value>::deserialize(d)?;
+    if let Some(v) = &value {
+        check_fem_models(v).map_err(serde::de::Error::custom)?;
+    }
+    Ok(value.map(std::sync::Arc::new))
+}
+/// Matrix coefficients have SI engineering units, not the units of a CAD
+/// coordinate. Their separate admission is bounded in size, depth and magnitude.
+pub(crate) fn check_fem_models(value: &serde_json::Value) -> Result<()> {
+    if !value.is_object() || serde_json::to_vec(value).map_err(|e| DocError::Invalid(e.to_string()))?.len() > 16 * 1024 * 1024 {
+        return Err(DocError::Invalid("FEM models must be an object of at most 16 MiB".into()));
+    }
+    fn visit(value: &serde_json::Value, depth: usize) -> Result<()> {
+        if depth > 64 {
+            return Err(DocError::Invalid("FEM data nested too deeply".into()));
+        }
+        match value {
+            serde_json::Value::Number(n) if n.as_f64().is_none_or(|x| !x.is_finite() || x.abs() > 1e30) => {
+                Err(DocError::Invalid("FEM number must be finite and within 1e30".into()))
+            }
+            serde_json::Value::Array(a) => a.iter().try_for_each(|v| visit(v, depth + 1)),
+            serde_json::Value::Object(m) => m.values().try_for_each(|v| visit(v, depth + 1)),
+            _ => Ok(()),
+        }
+    }
+    visit(value, 0)
+}
 
 pub const MAX_FEATURES: usize = 10_000;
 
 #[cfg(test)]
 mod dense_output_tests {
     use super::*;
+    #[test]
+    fn fem_matrices_roundtrip_native_format_without_weakening_cad_bounds() {
+        let mut doc = Document::new("FEM engineering units");
+        doc.fem_models = Some(std::sync::Arc::new(serde_json::json!({"models":{"arm":{"stiffness":[[2146856909.1081924]]}}})));
+        let restored = Document::from_json(&doc.to_json()).unwrap();
+        assert_eq!(restored.fem_models, doc.fem_models);
+        let mut value = serde_json::to_value(&doc).unwrap();
+        value["outside_fem"] = serde_json::json!({"fem_models":{"stiffness":[[2.1e12]]}});
+        assert!(Document::from_json(&value.to_string()).is_err());
+        value.as_object_mut().unwrap().remove("outside_fem");
+        value["fem_models"] = serde_json::json!({"models":{"arm":{"stiffness":[[1e31]]}}});
+        assert!(Document::from_json(&value.to_string()).is_err());
+    }
     #[test]
     fn dense_result_roundtrip_and_copy_on_write() {
         let mut doc = Document::new("dense result");
@@ -41,6 +82,20 @@ mod dense_output_tests {
         value["simulation_results"] = serde_json::json!([1, 2, 3]);
         assert!(serde_json::from_value::<Document>(value.clone()).is_err());
         value["simulation_results"] = serde_json::json!({"payload":"x".repeat(8*1024*1024)});
+        assert!(serde_json::from_value::<Document>(value).is_err());
+    }
+    #[test]
+    fn fem_artifacts_roundtrip_share_and_bound_storage() {
+        let mut doc = Document::new("component FEM");
+        doc.fem_models = Some(std::sync::Arc::new(serde_json::json!({"models":{"arm":{"basis":vec![vec![1.25;12];301]}}})));
+        let copy = doc.clone();
+        assert!(std::sync::Arc::ptr_eq(doc.fem_models.as_ref().unwrap(), copy.fem_models.as_ref().unwrap()));
+        let restored: Document = serde_json::from_slice(&serde_json::to_vec(&doc).unwrap()).unwrap();
+        assert_eq!(restored.fem_models, doc.fem_models);
+        let mut value = serde_json::to_value(&doc).unwrap();
+        value["fem_models"] = serde_json::json!([1]);
+        assert!(serde_json::from_value::<Document>(value.clone()).is_err());
+        value["fem_models"] = serde_json::json!({"payload":"x".repeat(16*1024*1024)});
         assert!(serde_json::from_value::<Document>(value).is_err());
     }
 }
@@ -2739,6 +2794,9 @@ pub struct Document {
     /// Bounded dynamics output, separate from small descriptive metadata.
     #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "read_simulation_results")]
     pub simulation_results: Option<std::sync::Arc<serde_json::Value>>,
+    /// Per-component FE meshes, reduced bases and results, shared by undo snapshots.
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "read_fem_models")]
+    pub fem_models: Option<std::sync::Arc<serde_json::Value>>,
     /// Named texts the words of sketch texts can be built from ([`crate::text_params`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub text_params: Vec<crate::text_params::TextParam>,
@@ -3026,6 +3084,7 @@ impl Document {
             metadata: Default::default(),
             params: Vec::new(),
             simulation_results: None,
+            fem_models: None,
             text_params: Vec::new(),
             features: Vec::new(),
             marker: None,

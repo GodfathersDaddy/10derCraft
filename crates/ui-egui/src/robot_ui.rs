@@ -58,6 +58,7 @@ pub fn fem(app: &mut SolveApp, ui: &mut egui::Ui) -> bool {
 
 #[derive(Clone)]
 struct DeformationScene {
+    time: Option<f64>,
     grid: bool,
     revision: u64,
     scale: f64,
@@ -67,6 +68,7 @@ struct DeformationScene {
 }
 #[derive(Clone)]
 struct DeformationImage {
+    time: Option<f64>,
     grid: bool,
     size: [usize; 2],
     revision: u64,
@@ -82,27 +84,101 @@ pub fn deformation_workspace(app: &mut SolveApp, ui: &mut egui::Ui) {
         return;
     }
     crate::ui_kit::FileView::page(ui, |ui| {
-        ui.heading(app.tr("ui.analysis.deformation"));
-        ui.label(app.tr("ui.analysis.beam_caption"));
-        let key = egui::Id::new(("fem_deformation", app.docs.active, app.session.path.clone()));
-        let mut scale = ui.ctx().data(|d| d.get_temp::<f64>(key.with("scale"))).unwrap_or(1000.);
-        ui.horizontal(|ui| {
-            ui.label(app.tr("ui.analysis.scale"));
-            let control = ui.add(egui::DragValue::new(&mut scale).range(0. ..=10000.).speed(10.));
-            scenario::publish_handle("fem:deformation:scale", control.rect.center());
+        let interfaces = app.session.studio.interface_preview;
+        let component = if interfaces { None } else { crate::fem_rom_ui::selected(app, ui.ctx()) };
+        ui.heading(app.tr(if interfaces {
+            "ui.fem_rom.interfaces"
+        } else if component.is_some() {
+            "ui.fem_rom.result_title"
+        } else {
+            "ui.analysis.deformation"
+        }));
+        ui.label(app.tr(if interfaces {
+            "ui.fem_rom.interface_note"
+        } else if component.is_some() {
+            "ui.fem_rom.result_note"
+        } else {
+            "ui.analysis.beam_caption"
+        }));
+        if interfaces && ui.button(app.tr("ui.fem_rom.back_to_pick")).clicked() {
+            let _ = app.run("mks.interface.display", json!({"enabled":false}));
+        }
+        let key = egui::Id::new(("fem_deformation", app.docs.active, app.session.path.clone(), interfaces, &component));
+        let history_key = key.with("mks_duration");
+        let cached_duration = ui.ctx().data(|data| data.get_temp::<(u64, Option<f64>)>(history_key));
+        let mks_duration = match cached_duration {
+            Some((revision, duration)) if revision == app.session.revision => duration,
+            _ => {
+                let duration = component.as_ref().and_then(|id| solidcraft_engine::cmd::fem_mks_duration(&mut app.session, id).ok().flatten());
+                ui.ctx().data_mut(|data| data.insert_temp(history_key, (app.session.revision, duration)));
+                duration
+            }
+        };
+        let duration = mks_duration.or_else(|| {
+            component.as_ref().and_then(|id| {
+                app.session
+                    .doc
+                    .fem_models
+                    .as_ref()?
+                    .get("models")?
+                    .get(id)?
+                    .get("result")?
+                    .get("flexible")?
+                    .get("times_s")?
+                    .as_array()?
+                    .last()?
+                    .as_f64()
+            })
         });
+        let mut time = None;
+        if let Some(duration) = duration {
+            let mut enabled = ui.ctx().data(|d| d.get_temp::<bool>(key.with("flex"))).unwrap_or(false);
+            let r = ui.checkbox(&mut enabled, app.tr(if mks_duration.is_some() { "ui.mks_rom.motion_result" } else { "ui.fem_rom.flex_result" }));
+            scenario::publish_handle("fem:rom:motion", r.rect.center());
+            ui.ctx().data_mut(|d| d.insert_temp(key.with("flex"), enabled));
+            if enabled {
+                let mut t = ui.ctx().data(|d| d.get_temp::<f64>(key.with("time"))).unwrap_or(0.);
+                ui.horizontal(|ui| {
+                    ui.label(app.tr("ui.fem_rom.time"));
+                    let r = ui.add(egui::DragValue::new(&mut t).range(0. ..=duration).speed(duration / 100.));
+                    scenario::publish_handle("fem:rom:time", r.rect.center());
+                });
+                ui.ctx().data_mut(|d| d.insert_temp(key.with("time"), t));
+                time = Some(t);
+            }
+        }
+        let mut scale = ui.ctx().data(|d| d.get_temp::<f64>(key.with("scale"))).unwrap_or(if component.is_some() { 1. } else { 1000. });
+        if interfaces {
+            scale = 1.;
+        }
+        if !interfaces {
+            ui.horizontal(|ui| {
+                ui.label(app.tr("ui.analysis.scale"));
+                let control = ui.add(egui::DragValue::new(&mut scale).range(0. ..=10000.).speed(10.));
+                scenario::publish_handle("fem:deformation:scale", control.rect.center());
+            });
+        }
         ui.ctx().data_mut(|d| d.insert_temp(key.with("scale"), scale));
         let mut grid = ui.ctx().data(|d| d.get_temp::<bool>(key.with("grid"))).unwrap_or(false);
-        let toggle = ui.checkbox(&mut grid, app.tr("ui.analysis.display_grid"));
-        scenario::publish_handle("fem:deformation:grid", toggle.rect.center());
-        ui.ctx().data_mut(|d| d.insert_temp(key.with("grid"), grid));
-        ui.small(app.tr("ui.analysis.grid_note"));
+        if !interfaces {
+            let toggle = ui.checkbox(&mut grid, app.tr("ui.analysis.display_grid"));
+            scenario::publish_handle("fem:deformation:grid", toggle.rect.center());
+            ui.ctx().data_mut(|d| d.insert_temp(key.with("grid"), grid));
+            ui.small(app.tr(if component.is_some() { "ui.fem_rom.mesh_grid_note" } else { "ui.analysis.grid_note" }));
+        }
         let cached = ui.ctx().data(|d| d.get_temp::<DeformationScene>(key));
         let scene = match cached {
-            Some(v) if v.revision == app.session.revision && v.scale == scale && v.grid == grid => v,
+            Some(v) if v.revision == app.session.revision && v.scale == scale && v.grid == grid && v.time == time => v,
             previous => {
                 let palette = solidcraft_engine::view::Palette::DEFAULT;
-                match solidcraft_engine::cmd::robot_fem_result_scene(&mut app.session, scale, palette) {
+                let result = if interfaces {
+                    solidcraft_engine::cmd::mks_interface_scene(&mut app.session, palette)
+                } else if let Some(id) = &component {
+                    solidcraft_engine::cmd::fem_rom_scene(&mut app.session, id, scale, time, palette)
+                } else {
+                    solidcraft_engine::cmd::robot_fem_result_scene(&mut app.session, scale, palette)
+                };
+                match result {
                     Ok((mut scene, bounds, maximum)) => {
                         if grid {
                             let mut lines = Vec::new();
@@ -131,8 +207,15 @@ pub fn deformation_workspace(app: &mut SolveApp, ui: &mut egui::Ui) {
                             app.cam.set_view(solidcraft_engine::render::StandardView::Iso);
                             app.cam.fit(&bounds);
                         }
-                        let cache =
-                            DeformationScene { grid, revision: app.session.revision, scale, scene: std::sync::Arc::new(scene), bounds, maximum };
+                        let cache = DeformationScene {
+                            time,
+                            grid,
+                            revision: app.session.revision,
+                            scale,
+                            scene: std::sync::Arc::new(scene),
+                            bounds,
+                            maximum,
+                        };
                         ui.ctx().data_mut(|d| d.insert_temp(key, cache.clone()));
                         cache
                     }
@@ -144,7 +227,14 @@ pub fn deformation_workspace(app: &mut SolveApp, ui: &mut egui::Ui) {
             }
         };
         let locale = crate::i18n::Locale::for_language(&app.preferences.language);
-        ui.label(locale.format("ui.analysis.field_range", &[("maximum", &format!("{:.6}", scene.maximum))]));
+        if interfaces {
+            ui.label(locale.format("ui.fem_rom.highlight_count", &[("count", &format!("{:.0}", scene.maximum))]));
+        } else {
+            ui.label(locale.format(
+                if component.is_some() { "ui.fem_rom.field_range" } else { "ui.analysis.field_range" },
+                &[("maximum", &format!("{:.6}", scene.maximum))],
+            ));
+        }
         if let Some(field) = scene.scene.meshes.iter().find(|m| !m.face_colors.is_empty()) {
             let (bar, _) = ui.allocate_exact_size(egui::vec2(320., 12.), egui::Sense::hover());
             let count = field.face_colors.len().max(1);
@@ -162,7 +252,10 @@ pub fn deformation_workspace(app: &mut SolveApp, ui: &mut egui::Ui) {
         }
         scenario::publish_handle("fem:deformation:fit", fit.rect.center());
         ui.small(app.tr("ui.analysis.navigation_hint"));
-        if let Ok(state) = app.session.execute("robot.inspect", &json!({})) {
+        if !interfaces
+            && component.is_none()
+            && let Ok(state) = app.session.execute("robot.inspect", &json!({}))
+        {
             ui.label(locale.format(
                 "ui.analysis.tcp_summary",
                 &[("tcp", &format!("{:.6}", state["fem"]["tcp_deflection_mm"].as_f64().unwrap_or(0.))), ("scale", &format!("{scale:.1}"))],
@@ -179,7 +272,7 @@ pub fn deformation_workspace(app: &mut SolveApp, ui: &mut egui::Ui) {
         let busy_key = key.with("busy");
         let mut image = ui.ctx().data(|d| d.get_temp::<DeformationImage>(image_key));
         let current = image.as_ref().is_some_and(|v| {
-            v.revision == app.session.revision && v.scale == scale && v.grid == grid && v.camera == app.cam && v.size == render_size
+            v.revision == app.session.revision && v.scale == scale && v.grid == grid && v.camera == app.cam && v.size == render_size && v.time == time
         });
         // Keep the last camera frame visible during navigation; never show another model revision.
         if let Some(cache) = &mut image
@@ -218,7 +311,7 @@ pub fn deformation_workspace(app: &mut SolveApp, ui: &mut egui::Ui) {
                 worker.data_mut(|d| {
                     d.insert_temp(
                         image_key,
-                        DeformationImage { grid, size: render_size, revision, scale, camera, image: Some(image), texture: None },
+                        DeformationImage { time, grid, size: render_size, revision, scale, camera, image: Some(image), texture: None },
                     );
                     d.insert_temp(busy_key, false);
                 });

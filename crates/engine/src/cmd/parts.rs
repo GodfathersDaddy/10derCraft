@@ -22,7 +22,7 @@ pub static COMMANDS: &[CommandSpec] = &[
         "the Insert Part dialog's command (same as parts.insert): family, size, length?, at?|point?+direction?, name?",
     ),
     CommandSpec::new("parts.insert", "Insert Part", insert).icon("fastener").params(
-        "family (socket_head_cap_screw | button_head_cap_screw | hex_bolt | hex_nut | washer | set_screw | dowel_pin | bearing); size (\"M6\", or \"608\" for bearings); \
+        "family (socket_head_cap_screw | button_head_cap_screw | hex_bolt | hex_nut | washer | set_screw | dowel_pin | bearing | stepper_motor); size (\"M6\", or \"608\" for bearings); \
          length? (mm; screws, bolts, set screws, pins; default a standard length near 2.5 d); \
          at?: [x,y,z] on a hole's rim or wall (the part seats on the hole's face with a rigid joint) | point?: [x,y,z] with direction?: [x,y,z] (no joint); name?",
     ),
@@ -40,6 +40,7 @@ const FAMILIES: &[(&str, &str, &str)] = &[
     ("set_screw", "Hex socket set screw, flat point", "ISO 4026"),
     ("dowel_pin", "Parallel pin (dowel)", "ISO 8734"),
     ("bearing", "Deep groove ball bearing (envelope)", "ISO 15 (6000/6200/600 series)"),
+    ("stepper_motor", "Stepper motor mounting model", "STEPPERONLINE 17HS19-2004S1"),
 ];
 
 /// ISO metric coarse: (size, d, pitch).
@@ -198,6 +199,8 @@ fn default_length(d: f64) -> f64 {
 /// One part's shape, in its own frame.
 #[derive(Clone, Debug, PartialEq)]
 enum Shape {
+    /// Manufacturer mounting dimensions, with an envelope for the motor internals.
+    Motor,
     /// A head (round, domed or hex), a shank down −z, an optional hex socket in the head's top.
     Screw { d: f64, pitch: f64, len: f64, head: Head, socket: Option<(f64, f64)> },
     /// A hex prism with a through hole (nut), z 0…m.
@@ -231,6 +234,12 @@ fn shape(family: &str, size: &str, length: Option<f64>) -> std::result::Result<S
     let need = |what: &str| format!("no {what} size `{size}` (parts.library lists them)");
     let len = |d: f64| length.unwrap_or_else(|| default_length(d));
     Ok(match family {
+        "stepper_motor" => {
+            if size != "17HS19-2004S1" || length.is_some() {
+                return Err("stepper_motor supports 17HS19-2004S1 with fixed 48 mm body length".into());
+            }
+            Shape::Motor
+        }
         "socket_head_cap_screw" => {
             let (d, pitch) = metric(size).ok_or_else(|| need("metric"))?;
             let (_, dk, k, s, t) = SHCS.iter().find(|r| r.0.eq_ignore_ascii_case(size)).copied().ok_or_else(|| need("ISO 4762"))?;
@@ -362,6 +371,17 @@ fn thread(s: &mut Session, d: f64, pitch: f64, at: Vec3) {
 fn build(s: &mut Session, sh: &Shape) -> Result<()> {
     let _frame = crate::frames::local_geometry();
     match *sh {
+        Shape::Motor => {
+            run(s, "solid.box", json!({"corner":[-21,-21,-48],"length":42,"width":42,"height":48,"operation":"new"}))?;
+            for x in [-15.5, 15.5] {
+                for y in [-15.5, 15.5] {
+                    run(s, "solid.cylinder", json!({"base":[x,y,-4.5],"diameter":2.5,"height":5.5,"operation":"cut"}))?;
+                }
+            }
+            run(s, "solid.cylinder", json!({"base":[0,0,0],"diameter":22,"height":2,"operation":"join"}))?;
+            run(s, "solid.cylinder", json!({"base":[0,0,1],"diameter":5,"height":23,"operation":"join"}))?;
+            run(s, "solid.box", json!({"corner":[2,-3,9],"length":2,"width":6,"height":16,"operation":"cut"}))?;
+        }
         Shape::Screw { d, pitch, len, head, socket } => {
             let k = match head {
                 // One revolved outline: shank and round head.
@@ -421,6 +441,7 @@ fn library(_s: &mut Session, p: &Value) -> Result<Value> {
             "set_screw" => SET_SCREW.iter().map(|r| json!({"size": r.0, "d": metric(r.0).map(|m| m.0), "pitch": metric(r.0).map(|m| m.1), "socket": r.1, "socket_depth": r.2})).collect(),
             "dowel_pin" => DOWEL.iter().map(|d| json!({"size": format!("{d}"), "d": d})).collect(),
             "bearing" => BEARINGS.iter().map(|r| json!({"size": r.0, "bore": r.1, "outer": r.2, "width": r.3})).collect(),
+            "stepper_motor" => vec![json!({"size":"17HS19-2004S1","width":42,"body_length":48,"shaft_diameter":5,"shaft_projection":24,"pilot_diameter":22,"pilot_height":2,"mount_pitch":31,"mount_thread":"M3","mount_depth":4.5,"mass_kg":0.390,"source":"https://www.omc-stepperonline.com/download/17HS19-2004S1.pdf","representation":"mounting geometry; 390 g equivalent homogeneous mass, envelope inertia"})],
             _ => Vec::new(),
         };
         let (_, name, standard) = FAMILIES.iter().find(|f| f.0 == id).copied().unwrap_or(("", "", ""));
@@ -500,6 +521,7 @@ fn label(family: &str) -> &'static str {
         "washer" => "Washer",
         "set_screw" => "Set Screw",
         "dowel_pin" => "Dowel Pin",
+        "stepper_motor" => "Stepper Motor",
         _ => "Bearing",
     }
 }
@@ -532,6 +554,21 @@ fn insert(s: &mut Session, p: &Value) -> Result<Value> {
     let c = run(s, "component.create", json!({"name": name, "grounded": false}))?;
     let (comp, occ) = (c["component"].as_u64().unwrap_or(0), c["occurrence"].as_u64().unwrap_or(0));
     build(s, &sh)?;
+    if sh == Shape::Motor {
+        let state = s.model.state();
+        let bodies: Vec<_> = state.bodies.iter().filter(|body| s.doc.model_body_component(body) == comp).collect();
+        let mut volume = 0.;
+        for body in &bodies {
+            volume += body.measure().map_err(|e| EngineError::Other(e.to_string()))?.volume;
+        }
+        if !volume.is_finite() || volume <= 0. {
+            return Err(bad(cmd, "motor envelope has no finite positive volume"));
+        }
+        let names: Vec<_> = bodies.iter().map(|body| body.name.clone()).collect();
+        let material = format!("17HS19-2004S1 equivalent mass {comp}");
+        run(s, "material.create", json!({"name":material,"density_g_cm3":390000./volume,"color":"#40464f"}))?;
+        run(s, "material.assign", json!({"bodies":names,"material":material}))?;
+    }
     s.doc_mut().parts.insert(comp, solidcraft_doc::StandardPart { family: family.clone(), size: size.clone(), length: shape_len(&sh) });
     set_identity(s, comp, identity(&family, &size, &sh), None);
     run(s, "component.activate", json!({"component": active}))?;
@@ -542,7 +579,7 @@ fn insert(s: &mut Session, p: &Value) -> Result<Value> {
         let j = run(
             s,
             "joint.create",
-            json!({"type": "rigid", "a": {"occurrence": h, "circle": a}, "b": {"occurrence": occ, "point": [0, 0, 0], "z": [0, 0, -1]}, "name": format!("{name} seat")}),
+            json!({"type": "rigid", "a": {"occurrence": h, "circle": a}, "b": {"occurrence": occ, "point": [0, 0, 0], "z": if sh == Shape::Motor {[0,0,1]} else {[0,0,-1]}}, "name": format!("{name} seat")}),
         )?;
         out["joint"] = j["joint"].clone();
     } else if let Some(pt) = p.get("point").and_then(vec3) {

@@ -1,0 +1,6 @@
+{
+  "passed": true,
+  "rigid_fallback": true,
+  "rebind_invalidates_old_result": true,
+  "source_project_unchanged": true
+}

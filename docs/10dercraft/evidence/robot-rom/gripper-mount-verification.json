@@ -1,0 +1,23 @@
+{
+  "passed": true,
+  "motor": {
+    "component": 227,
+    "joint": 237,
+    "name": "Greifer_17HS19_2004S1",
+    "occurrence": 228
+  },
+  "adapter": {
+    "component": 207,
+    "grounded": false,
+    "name": "Greifer_Motoradapter",
+    "occurrence": 208,
+    "parent": 0
+  },
+  "hardware_components": 12,
+  "summary": {
+    "max_axis_alignment_error": 1.3855660097167028e-08,
+    "max_energy_change_j": 410.83404158868507,
+    "max_position_constraint_m": 2.167096187927955e-09
+  },
+  "scope": "Mounted gripper motor and fasteners, motor carried as rigid mass. Finger transmission and detailed-arm solid ROM remain open."
+}

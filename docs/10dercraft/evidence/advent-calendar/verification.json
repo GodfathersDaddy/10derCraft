@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "parts": 34,
+  "closed_mesh_bodies": 34,
+  "joints": 33,
+  "drawer_sliders": 23,
+  "removable_top": true,
+  "checked_positions": 72,
+  "max_translation_error_mm": 3.0127011996228248e-12,
+  "feature_errors": 0,
+  "source": "User-supplied Christbaum_Adventkalender_CAD_STL.zip",
+  "representation": "Imported triangle meshes with native assembly joints; geometry retains source tessellation."
+}

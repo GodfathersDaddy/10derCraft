@@ -608,6 +608,7 @@ fn dispatch(app: &mut SolveApp, ctx: &egui::Context, method: &str, p: &Value) ->
         }
         "ui.messages" => ok(crate::messages::control(app, p)),
         "ui.inspect" => ok(json!({
+            "component_fem":crate::fem_rom_ui::inspect(app,ctx),
             "render": crate::render_workspace::inspect_state(app),
             "ui": ui_state(app),
             "visibility": app.session.visibility,

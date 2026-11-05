@@ -88,5 +88,25 @@
     "path": "examples/projects/Suite-Varianten.solidcraft",
     "sha256": "8cdc55020dfa6b2f919463a0efae7c57db9ff16e2f4fb653d73d443c3982a916",
     "bytes": 98389
+  },
+  {
+    "path": "examples/projects/Christbaum-Adventkalender.solidcraft",
+    "sha256": "a0b6b6372c0525609c9f25b90caa39b80fd94ba91aa5d9bc0ec0544c2a20f20b",
+    "bytes": 5366634
+  },
+  {
+    "path": "examples/projects/Roboter-Parameter-Motor-Normteile.solidcraft",
+    "sha256": "100381374ac0b63ad9ed2b818c4a7d144323ed381f06d77872e8dd3c6f9483c4",
+    "bytes": 1191676
+  },
+  {
+    "path": "examples/projects/Kran-Zwei-Flexible-Arme.solidcraft",
+    "sha256": "1aabb0a57dc3014375fd24575f1aac2ae111056cec1c316b360a2923cd07c958",
+    "bytes": 1482375
+  },
+  {
+    "path": "examples/projects/Flexarm-FEM-ROM-MKS.solidcraft",
+    "sha256": "70c61f7590f7d9a9e590287cc1794fac611103f9c49dc1e09dc81732ded16440",
+    "bytes": 702150
   }
 ]

@@ -1,0 +1,12 @@
+{
+  "passed": true,
+  "motor_volume_mm3": 85760.50059540871,
+  "analytic_volume_mm3": 85760.54888970574,
+  "motor_mass_g": 390.0,
+  "normal_library": true,
+  "rom_library_entry": true,
+  "rom_drag_to_second_body": true,
+  "rom_block_results_navigation": true,
+  "mks_history_component_view": true,
+  "component_setup_from_mks": true
+}

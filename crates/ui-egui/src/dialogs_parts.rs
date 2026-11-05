@@ -212,7 +212,9 @@ pub fn rows(app: &mut SolveApp, ui: &mut egui::Ui, k: &mut Pt, inputs: &[SelInpu
             form_row(ui, &label, |ui| {
                 crate::ui_kit::text(
                     ui,
-                    &v.as_f64().map(|x| crate::prefs::show_mm(app, x, 1)).unwrap_or_else(|| v.to_string()),
+                    &v.as_f64()
+                        .map(|x| if key == "mass_kg" { format!("{x:.3} kg") } else { crate::prefs::show_mm(app, x, 1) })
+                        .unwrap_or_else(|| v.to_string()),
                     crate::ui_kit::Text::Cell,
                 );
             });

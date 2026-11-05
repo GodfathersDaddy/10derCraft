@@ -51,11 +51,28 @@ struct Reply {
 struct Connected {
     joint: u64,
 }
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct Display {
+    enabled: bool,
+}
+#[derive(Serialize, JsonSchema)]
+struct DisplayReply {
+    enabled: bool,
+    cad_changed: bool,
+}
 const CAPTURE: TypedContract<Capture> = TypedContract::new();
 const CONNECT: TypedContract<Connect> = TypedContract::new();
 const EMPTY: TypedContract<Empty> = TypedContract::new();
 const DESCRIPTION: TypedContract<Description> = TypedContract::new();
+const DISPLAY: TypedContract<Display> = TypedContract::new();
 pub static COMMANDS: &[CommandSpec] = &[
+    CommandSpec::new("mks.interface.display", "Inspect Load Transfer Surfaces", crate::checked!("mks.interface.display", display))
+        .icon("joint_origin")
+        .contract(&DISPLAY)
+        .output(output_schema_for::<DisplayReply>)
+        .noundo()
+        .doc_only(),
     CommandSpec::new("mks.interface.open", "CAD Simulation Interfaces", crate::checked!("mks.interface.open", read))
         .contract(&EMPTY)
         .output(output_schema_for::<Reply>)
@@ -82,6 +99,79 @@ pub static COMMANDS: &[CommandSpec] = &[
         .contract(&DESCRIPTION)
         .output(output_schema_for::<Reply>),
 ];
+fn display(s: &mut Session, p: &Value) -> Result<Value> {
+    let p: Display = serde_json::from_value(p.clone()).map_err(|e| error(e.to_string()))?;
+    s.studio.interface_preview = p.enabled;
+    Ok(json!({"enabled":p.enabled,"cad_changed":false}))
+}
+
+/// Render associative CAD surface supports, not marker discs or bounding boxes.
+/// The red triangles are taken from the current named B-rep face of the exact
+/// occurrence. This inspection never edits a body's saved appearance.
+pub fn interface_scene(s: &mut Session, palette: crate::view::Palette) -> Result<(solidcraft_render::Scene, solidcraft_geom::Aabb3, f64)> {
+    use solidcraft_doc::{apply_point, apply_vector};
+    use solidcraft_geom::Aabb3;
+    use solidcraft_render::{Scene, SceneMesh};
+    use std::sync::Arc;
+    let ports = super::mechanics::model_ports(s)?;
+    let graph = s.execute("mks.model", &json!({}))?;
+    let native = s.model.state();
+    let mut scene = Scene { background: Some(palette.background), ..Scene::default() };
+    let mut bounds = Aabb3::EMPTY;
+    let mut count = 0;
+    let mut highlighted = 0;
+    for placed in graph["blocks"].as_array().into_iter().flatten().flat_map(|b| b["bodies"].as_array().into_iter().flatten()) {
+        let body = native
+            .bodies
+            .iter()
+            .find(|b| Some(b.name.as_str()) == placed["source"].as_str() && Some(s.doc.model_body_component(b)) == placed["component"].as_u64())
+            .ok_or_else(|| error("CAD source missing"))?;
+        let world: solidcraft_doc::Mat = serde_json::from_value(placed["world"].clone()).map_err(|e| error(e.to_string()))?;
+        let names = solidcraft_doc::naming::face_names(body);
+        let faces: std::collections::BTreeSet<u32> = ports
+            .iter()
+            .filter(|p| {
+                p["valid"] == true
+                    && p["port"]["support"] == "surface"
+                    && p["port"]["body"] == body.name
+                    && p["port"]["occurrence"].as_array().is_some_and(|path| placed["path"].as_array() == Some(path))
+            })
+            .filter_map(|p| names.iter().position(|n| Some(n.as_str()) == p["port"]["area_face"].as_str()).map(|i| i as u32))
+            .collect();
+        let mut mesh = (*body.mesh()).clone();
+        count += mesh.triangles.len();
+        if count > 250_000 {
+            return Err(error("interface preview limited to 250000 display triangles"));
+        }
+        for p in &mut mesh.positions {
+            *p = apply_point(&world, *p);
+            bounds.add(*p);
+        }
+        for n in &mut mesh.normals {
+            *n = apply_vector(&world, *n);
+        }
+        mesh.edges.clear();
+        let mut red = mesh.clone();
+        red.triangles =
+            mesh.triangles.iter().enumerate().filter(|(i, _)| mesh.tri_face.get(*i).is_some_and(|f| faces.contains(f))).map(|(_, t)| *t).collect();
+        red.tri_face.clear();
+        highlighted += red.triangles.len();
+        mesh.triangles =
+            mesh.triangles.iter().enumerate().filter(|(i, _)| !mesh.tri_face.get(*i).is_some_and(|f| faces.contains(f))).map(|(_, t)| *t).collect();
+        mesh.tri_face.clear();
+        let mut glass = SceneMesh::solid(Arc::new(mesh), palette.body);
+        glass.opacity = 0.12;
+        scene.meshes.push(glass);
+        if !red.triangles.is_empty() {
+            scene.meshes.push(SceneMesh::solid(Arc::new(red), palette.axes[0]));
+        }
+    }
+    if bounds.is_empty() {
+        return Err(error("no CAD geometry to inspect"));
+    }
+    scene.radius = bounds.diagonal().max(1.);
+    Ok((scene, bounds, highlighted as f64))
+}
 fn error(message: impl Into<String>) -> crate::EngineError {
     bad("mks.interface", message)
 }

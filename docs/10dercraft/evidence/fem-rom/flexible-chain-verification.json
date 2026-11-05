@@ -1,0 +1,32 @@
+{
+  "passed": true,
+  "cases": [
+    {
+      "two": false,
+      "driven": true,
+      "summary": {
+        "max_position_constraint_m": 1.6767540745993657e-26,
+        "max_axis_alignment_error": 8.520257720287233e-27,
+        "max_energy_change_j": 204.33598649177688
+      }
+    },
+    {
+      "two": false,
+      "driven": false,
+      "summary": {
+        "max_position_constraint_m": 7.893658556620375e-30,
+        "max_axis_alignment_error": 2.2812849983039193e-28,
+        "max_energy_change_j": 0.013787929504623264
+      }
+    },
+    {
+      "two": true,
+      "driven": true,
+      "summary": {
+        "max_position_constraint_m": 2.8550222104615906e-14,
+        "max_axis_alignment_error": 1.83967663094934e-13,
+        "max_energy_change_j": 345.45548780075137
+      }
+    }
+  ]
+}

@@ -13,11 +13,27 @@ pub(super) fn execute(job: &Value) -> Result<Value> {
         process::{Command, Stdio},
         time::{Duration, Instant, SystemTime, UNIX_EPOCH},
     };
-    let worker = std::env::var_os("SOLIDCRAFT_ASSEMBLY_WORKER")
+    let fem = job["schema"] == "solidcraft.fem-job/1";
+    let flexible = job["schema"] == "solidcraft.flex-assembly-job/1";
+    let worker_name = if fem {
+        "fem_worker.py"
+    } else if flexible {
+        "flexible_assembly_worker.py"
+    } else {
+        "assembly_worker.py"
+    };
+    let variable = if fem {
+        "SOLIDCRAFT_FEM_WORKER"
+    } else if flexible {
+        "SOLIDCRAFT_FLEXIBLE_ASSEMBLY_WORKER"
+    } else {
+        "SOLIDCRAFT_ASSEMBLY_WORKER"
+    };
+    let worker = std::env::var_os(variable)
         .map(std::path::PathBuf::from)
         .or_else(|| {
             let binary = std::env::current_exe().ok()?;
-            binary.ancestors().map(|p| p.join("simulation/assembly_worker.py")).find(|p| p.is_file())
+            binary.ancestors().map(|p| p.join("simulation").join(worker_name)).find(|p| p.is_file())
         })
         .ok_or_else(|| bad("mks.job.run", "optional simulation/assembly_worker.py missing"))?;
     let folder = worker.parent().ok_or_else(|| bad("mks.job.run", "invalid worker path"))?;
@@ -28,8 +44,9 @@ pub(super) fn execute(job: &Value) -> Result<Value> {
         return Err(bad("mks.job.run", "optional scientific Python environment missing; see simulation/README.md"));
     }
     let payload = serde_json::to_vec(job).map_err(|e| bad("mks.job.run", e.to_string()))?;
-    if payload.len() > 60 * 1024 {
-        return Err(bad("mks.job.run", "job exceeds local prototype snapshot limit (60 KiB)"));
+    let input_limit = if fem || flexible { 6 * 1024 * 1024 } else { 60 * 1024 };
+    if payload.len() > input_limit {
+        return Err(bad("mks.job.run", "job exceeds bounded local solver input limit"));
     }
     let mut command = Command::new(python);
     command.arg("-B").arg(&worker).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
@@ -80,7 +97,7 @@ pub(super) fn execute(job: &Value) -> Result<Value> {
     // Archive each run, including failures, for reproducibility. Never overwrite a run.
     if let Some(root) = folder.parent() {
         let stamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
-        let path = root.join("output/mks-runs").join(format!("{stamp}-{}", std::process::id()));
+        let path = root.join(if fem { "output/fem-runs" } else { "output/mks-runs" }).join(format!("{stamp}-{}", std::process::id()));
         if std::fs::create_dir_all(&path).is_ok() {
             for (name, data) in [("job.json", payload.as_slice()), ("result.json", bytes.as_slice()), ("stderr.txt", stderr.as_slice())] {
                 if let Ok(mut f) = OpenOptions::new().write(true).create_new(true).open(path.join(name)) {

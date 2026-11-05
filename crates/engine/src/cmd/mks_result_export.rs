@@ -76,6 +76,25 @@ fn error(s: impl Into<String>) -> crate::EngineError {
 }
 /// Same geometry and poses for the UI and headless export; palette is display-only.
 pub fn assembly_result_scene(s: &mut Session, sample: usize, palette: Palette) -> Result<(Scene, Aabb3)> {
+    if !super::fem_rom::bindings(s).is_empty() {
+        let replay = super::mks_replay::prepare(s)?;
+        let time = *replay.times().get(sample).ok_or_else(|| error("sample outside flexible result"))?;
+        let mut scene = Scene { background: Some(palette.background), radius: replay.bounds.diagonal().max(1.), ..Default::default() };
+        let mut bounds = Aabb3::EMPTY;
+        for (i, (source, world)) in replay.meshes.iter().zip(replay.worlds(time)).enumerate() {
+            let mut mesh = replay.elastic_mesh(i, time).unwrap_or_else(|| (*source.mesh).clone());
+            for p in &mut mesh.positions {
+                *p = apply_point(&world, *p);
+                bounds.add(*p);
+            }
+            for n in &mut mesh.normals {
+                *n = apply_vector(&world, *n);
+            }
+            mesh.edges.clear();
+            scene.meshes.push(SceneMesh::solid(Arc::new(mesh), source.color));
+        }
+        return Ok((scene, bounds));
+    }
     let frame = super::mks_simulation::frame(s, &json!({"sample":sample}))?;
     let model = s.model.state();
     let mut out = Scene { background: Some(palette.background), ..Scene::default() };
@@ -256,8 +275,8 @@ fn video(s: &mut Session, p: &Value) -> Result<Value> {
     for i in 0..count {
         let time = (start + i as f64 / f64::from(fps)).min(start + duration);
         let mut scene = Scene { background: Some(Palette::DEFAULT.background), radius: replay.bounds.diagonal().max(1.), ..Scene::default() };
-        for (source, world) in replay.meshes.iter().zip(replay.worlds(time)) {
-            let mut mesh = (*source.mesh).clone();
+        for (index, (source, world)) in replay.meshes.iter().zip(replay.worlds(time)).enumerate() {
+            let mut mesh = replay.elastic_mesh(index, time).unwrap_or_else(|| (*source.mesh).clone());
             for p in &mut mesh.positions {
                 *p = apply_point(&world, *p);
             }

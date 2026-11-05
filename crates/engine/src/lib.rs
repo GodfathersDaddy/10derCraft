@@ -1960,6 +1960,7 @@ fn same_but_features(a: &Document, b: &Document) -> bool {
         units,
         metadata,
         simulation_results,
+        fem_models,
         params,
         text_params,
         features: _,
@@ -1997,6 +1998,11 @@ fn same_but_features(a: &Document, b: &Document) -> bool {
         && *units == b.units
         && *metadata == b.metadata
         && (match (simulation_results, &b.simulation_results) {
+            (Some(a), Some(b)) => Arc::ptr_eq(a, b) || a == b,
+            (None, None) => true,
+            _ => false,
+        })
+        && (match (fem_models, &b.fem_models) {
             (Some(a), Some(b)) => Arc::ptr_eq(a, b) || a == b,
             (None, None) => true,
             _ => false,

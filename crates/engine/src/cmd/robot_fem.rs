@@ -348,6 +348,36 @@ pub fn result_scene(s: &mut Session, scale: f64, palette: crate::view::Palette) 
 mod tests {
     use super::*;
     #[test]
+    fn component_rom_uses_native_faces_and_rejects_stale_geometry() {
+        let mut s = crate::Session::default();
+        s.execute("parameters.add", &json!({"name":"L","expression":"1000 mm"})).unwrap();
+        s.execute("solid.box", &json!({"length":"L","width":100,"height":100,"body_name":"Arm"})).unwrap();
+        let faces = s.execute("model.faces", &json!({"body":"Arm"})).unwrap();
+        for (x, name) in [(0., "Root"), (1000., "Tip")] {
+            let face = faces["faces"].as_array().unwrap().iter().find(|v| (v["centroid"][0].as_f64().unwrap() - x).abs() < 1e-6).unwrap();
+            s.execute("select.set", &json!({"items":[{"type":"face","body":"Arm","index":face["index"],"point":face["point"]}]})).unwrap();
+            s.execute("mks.interface.capture", &json!({"name":name,"occurrence":0,"transfer":"frame_wrench","surface":true})).unwrap();
+        }
+        let before = s.doc.clone();
+        s.execute("mks.interface.display", &json!({"enabled":true})).unwrap();
+        let (scene, _, count) = crate::cmd::mks_interface_scene(&mut s, crate::view::Palette::DEFAULT).unwrap();
+        assert_eq!(count, 4.);
+        assert!(scene.meshes.iter().any(|m| m.opacity == 0.12));
+        assert!(scene.meshes.iter().any(|m| m.opacity == 1. && m.color == crate::view::Palette::DEFAULT.axes[0]));
+        assert_eq!(s.doc, before, "inspection must not alter saved CAD/materials");
+        let graph = s.execute("mks.model", &json!({})).unwrap();
+        let block = graph["blocks"][0]["id"].clone();
+        s.execute("fem.model.create",&json!({"id":"Arm_ROM","block":block,"interfaces":["Root","Tip"],"material":{"young_mpa":210000,"poisson_ratio":0.3,"density_kg_m3":7850}})).unwrap();
+        let report = s.execute("fem.model.read", &json!({"id":"Arm_ROM","detail":true})).unwrap();
+        assert_eq!(report["models"][0]["current"], true);
+        assert_eq!(report["data"]["job"]["mesh"]["shape"]["kind"], "box");
+        assert_eq!(report["data"]["job"]["interfaces"][0]["area_mm2"], 10000.);
+        assert_eq!(report["data"]["job"]["interfaces"][1]["origin_mm"][0], 1000.);
+        s.execute("parameters.change", &json!({"name":"L","expression":"1100 mm"})).unwrap();
+        assert_eq!(s.execute("fem.model.read", &json!({})).unwrap()["models"][0]["current"], false);
+        assert!(s.execute("fem.rom.reduce", &json!({"id":"Arm_ROM"})).is_err());
+    }
+    #[test]
     fn bending_matches_force_and_moment_solutions() {
         for n in [1, 2, 8, 32] {
             let (l, ei, f, m) = (1000., 2.1e10, 100., -12000.);
