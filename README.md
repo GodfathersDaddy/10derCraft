@@ -8,6 +8,8 @@ Future updates can follow the retained upstream history: [integration workflow](
 
 ## Start on Windows
 
+Windows development snapshots are published under [Releases](https://github.com/GodfathersDaddy/10derCraft/releases). Extract the entire ZIP to a writable folder and open **Start-10derCraft.cmd**. The complete portable package includes the GUI, CLI/MCP, examples, local Calcpad helper and a separate Python runtime with Exudyn, NumPy and SciPy. Its `BUILD_INFO.json` records the source commit and verification scope. Development snapshots are unsigned prereleases.
+
 Install Rust and Visual Studio C++ build tools as described in [building](docs/building.md). Run `powershell -NoProfile -ExecutionPolicy Bypass -File Build-10derCraft.ps1`, then open **Start-10derCraft.cmd**. Choose projects under **Beispiele** on the home page. The starter also accepts a model file as an argument. This is a source checkout; generated binaries and installed runtimes are not committed.
 
 For local simulation, install Python and create its separate environment:
@@ -25,6 +27,9 @@ For the local Mathcad-style worksheet backend, install .NET 10 SDK and run `powe
 - Robot arm: parameterized CAD, large-motion example, independent motion sources, sensors, joint-force plots and a dense drag-and-drop workflow.
 - Pendulum: ground, revolute joint, arm and end weight, with 1001 stored output points.
 - Additional calculation-to-CAD, mechanical-interface, mass-property and variant examples.
+- Solid-FEM/ROM flexible arm and two-flexible-arm crane with saved numerical results.
+- Robot with mounted catalogue gripper motor, adapter plate and native standard fasteners.
+- Assembled 34-part Advent calendar with radial drawer joints and a removable top.
 
 The [example catalogue](10derCraft.examples.json) contains paths; [checksums](examples/10dercraft-manifest.json) identify the included project files. Calculations are saved inside projects; optional standalone worksheet documents are under [examples/calculations](examples/calculations/). A simple parameterized plate with FEM is deferred.
 
@@ -34,7 +39,9 @@ CAD bodies and joints define the physical assembly. In MKS, drag a motion source
 
 **Video speichern** in the MKS ribbon exports a current simulation as AVI/MJPEG in the background. Default: 640 × 360 pixels, 30 fps, fixed fitted camera. The export interpolates joint-relative poses and keeps the source result unchanged. It refuses existing destinations; choose a new filename. Limits: 601 frames, 150 million total pixels, 128 MiB. PNG and animated GIF remain separate. MP4 and audio are not included.
 
-This is a research prototype, not a complete Simscape or Modelica implementation. Supported dynamics are bounded open rigid-body trees with revolute/prismatic joints. Robot FEM is a locked-actuator beam model; general solid FEM, flexible MKS, contact and arbitrary controllers remain further work. Upstream analytic drawing projection currently reports native involute surfaces as unsupported.
+Supported dynamics include bounded open rigid and mixed rigid/FFRF trees with revolute/prismatic joints. Component FEM supports linear-elastic TET4/TET10 volume meshes, RBE2 transfer surfaces and Craig-Bampton reduction. Current assembly modal histories can be displayed in the individual component view. Existing ROM settings can be reopened from a block, preserving imported mesh data and surface order. Forces and moments can be edited in the FEM form.
+
+Automatic volume meshing covers complete primitive boxes and cylinders. Detailed multi-part groups require a conforming imported volume mesh and explicit connection assumptions. The detailed six-axis arm still needs complete flexible-group ROMs, mechanically resolved drive connections and manufacturing verification. Contact, a functioning gripper transmission and arbitrary controller execution remain open. See the [robot workflow status](docs/10dercraft/ROBOTER_ROM_WORKFLOW_STATUS.md). Upstream analytic drawing projection currently reports native involute surfaces as unsupported.
 
 ## Research and verification
 
@@ -44,7 +51,7 @@ Engine operations are registered commands and accessible through the existing co
 
 Full project gate before commits: `cargo xtask ci`. The integration report records actual checks; a successful build alone is not a physical validation of every example.
 
-This snapshot was finalized with focused checks at the owner’s request; the complete native test suite is still pending. Static gates, full Clippy, Wasm, doctests, project opening and native robot/video workflows were checked. See the [verification scope](docs/10dercraft/evidence/focused-release.json).
+The earlier release has its own [verification scope](docs/10dercraft/evidence/focused-release.json). The current development snapshot has broad tests paused at the owner's request. Its [checkpoint record](docs/10dercraft/ZWISCHENSTAND_2026-11-05.md) distinguishes earlier checks from subsequent untested edits. Building or packaging the application supplies no additional physical qualification.
 
 ## Licence
 

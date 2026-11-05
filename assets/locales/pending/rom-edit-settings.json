@@ -1,0 +1,12 @@
+{
+  "de": {
+    "ui.fem_rom.edit": "ROM-Einstellungen bearbeiten",
+    "ui.fem_rom.moment": "Moment [Nm]",
+    "ui.fem_rom.stored_mesh": "Gespeichertes Importnetz wird verwendet. Eine neue Netzdatei ersetzt es."
+  },
+  "en": {
+    "ui.fem_rom.edit": "Edit ROM settings",
+    "ui.fem_rom.moment": "Moment [Nm]",
+    "ui.fem_rom.stored_mesh": "Using the stored imported mesh. A new mesh file replaces it."
+  }
+}

@@ -19,6 +19,9 @@ struct Draft {
     duration: f64,
     error: String,
     mesh_file: String,
+    stored_mesh: Option<Value>,
+    element_order: u32,
+    moment: [f64; 3],
 }
 impl Default for Draft {
     fn default() -> Self {
@@ -37,6 +40,9 @@ impl Default for Draft {
             duration: 1.,
             error: String::new(),
             mesh_file: String::new(),
+            stored_mesh: None,
+            element_order: 2,
+            moment: [0.; 3],
         }
     }
 }
@@ -72,6 +78,42 @@ pub fn prepare_block(app: &mut SolveApp, ctx: &egui::Context, block: &str) {
     app.ui.project_page = "fem".into();
     app.ui.tab = "FEM / ROM".into();
     app.ui.engineering_dialog = Some("fem_rom".into());
+}
+fn model_draft(app: &mut SolveApp, id: &str) -> Result<Draft, String> {
+    let state = app.session.execute("fem.model.read", &json!({"id":id,"detail":true})).map_err(|e| e.to_string())?;
+    let record = &state["data"];
+    let job = &record["job"];
+    let mut draft = Draft {
+        id: id.into(),
+        block: record["block"].as_str().unwrap_or_default().into(),
+        body: record["body"].as_str().unwrap_or_default().into(),
+        interfaces: job["interfaces"].as_array().into_iter().flatten().filter_map(|p| p["id"].as_str().map(str::to_owned)).collect(),
+        ..Draft::default()
+    };
+    draft.young = job["material"]["young_mpa"].as_f64().unwrap_or(draft.young);
+    draft.poisson = job["material"]["poisson_ratio"].as_f64().unwrap_or(draft.poisson);
+    draft.density = job["material"]["density_kg_m3"].as_f64().unwrap_or(draft.density);
+    draft.modes = job["modes"].as_u64().unwrap_or(6) as u32;
+    draft.element_order = job["mesh"]["element_order"].as_u64().unwrap_or(2) as u32;
+    if job["mesh"]["nodes_mm"].is_array() {
+        draft.stored_mesh = Some(json!({"nodes_mm":job["mesh"]["nodes_mm"],"tetrahedra":job["mesh"]["tetrahedra"]}));
+    }
+    for (i, value) in draft.divisions.iter_mut().enumerate() {
+        *value = job["mesh"]["divisions"][i].as_u64().unwrap_or(u64::from(*value)) as u32;
+    }
+    for i in 0..3 {
+        draft.force[i] = job["loads"][0]["wrench_world_n_nm"][i].as_f64().unwrap_or(draft.force[i]);
+        draft.moment[i] = job["loads"][0]["wrench_world_n_nm"][i + 3].as_f64().unwrap_or(0.);
+    }
+    Ok(draft)
+}
+pub fn edit_model(app: &mut SolveApp, ctx: &egui::Context, id: &str) -> Result<(), String> {
+    let draft = model_draft(app, id)?;
+    ctx.data_mut(|data| data.insert_temp(key(app), draft));
+    app.ui.project_page = "fem".into();
+    app.ui.tab = "FEM / ROM".into();
+    app.ui.engineering_dialog = Some("fem_rom".into());
+    Ok(())
 }
 /// Automation status for a desktop calculation without exposing the dense ROM.
 pub fn inspect(app: &SolveApp, ctx: &egui::Context) -> Value {
@@ -188,6 +230,8 @@ fn form(app: &mut SolveApp, ui: &mut egui::Ui) {
                     if row.changed() {
                         d.body.clear();
                         d.interfaces.clear();
+                        d.stored_mesh = None;
+                        d.mesh_file.clear();
                     }
                 }
             }
@@ -198,10 +242,16 @@ fn form(app: &mut SolveApp, ui: &mut egui::Ui) {
         egui::ComboBox::from_id_salt("fem_part").selected_text(if d.body.is_empty() { app.tr("ui.fem_rom.whole") } else { &d.body }).show_ui(
             ui,
             |ui| {
-                ui.selectable_value(&mut d.body, String::new(), app.tr("ui.fem_rom.whole"));
+                if ui.selectable_value(&mut d.body, String::new(), app.tr("ui.fem_rom.whole")).changed() {
+                    d.stored_mesh = None;
+                    d.mesh_file.clear();
+                }
                 for b in scope["bodies"].as_array().into_iter().flatten() {
                     if let Some(name) = b["source"].as_str() {
-                        ui.selectable_value(&mut d.body, name.into(), name);
+                        if ui.selectable_value(&mut d.body, name.into(), name).changed() {
+                            d.stored_mesh = None;
+                            d.mesh_file.clear();
+                        }
                     }
                 }
             },
@@ -248,6 +298,9 @@ fn form(app: &mut SolveApp, ui: &mut egui::Ui) {
             ui.add(egui::DragValue::new(&mut d.modes).range(1..=24));
         });
         ui.label(app.tr("ui.fem_rom.mesh_note"));
+        if d.stored_mesh.is_some() {
+            ui.label(app.tr("ui.fem_rom.stored_mesh"));
+        }
         ui.horizontal(|ui| {
             ui.label(app.tr("ui.fem_rom.mesh_file"));
             ui.text_edit_singleline(&mut d.mesh_file);
@@ -260,6 +313,12 @@ fn form(app: &mut SolveApp, ui: &mut egui::Ui) {
         }
     });
     ui.horizontal(|ui| {
+        ui.label(app.tr("ui.fem_rom.moment"));
+        for moment in &mut d.moment {
+            ui.add(egui::DragValue::new(moment));
+        }
+    });
+    ui.horizontal(|ui| {
         ui.label(app.tr("ui.fem_rom.motion"));
         ui.add(egui::DragValue::new(&mut d.angle).suffix("°").range(-180. ..=180.));
         ui.add(egui::DragValue::new(&mut d.duration).suffix(" s").range(0.01..=5.));
@@ -268,11 +327,11 @@ fn form(app: &mut SolveApp, ui: &mut egui::Ui) {
     ui.horizontal(|ui|{for (flexible,label,handle) in [(false,"ui.fem_rom.reduce","fem:rom:reduce"),(true,"ui.fem_rom.flexible","fem:rom:flexible")]{
         let b=ui.add_enabled(!running&&!d.interfaces.is_empty(),egui::Button::new(app.tr(label)));scenario::publish_handle(handle,b.rect.center());
         if b.clicked(){let outcome=(||{
-            let mut inputs=json!({"id":d.id,"block":d.block,"interfaces":d.interfaces,"material":{"young_mpa":d.young,"poisson_ratio":d.poisson,"density_kg_m3":d.density},"divisions":d.divisions,"modes":d.modes,"element_order":2});
+            let mut inputs=json!({"id":d.id,"block":d.block,"interfaces":d.interfaces,"material":{"young_mpa":d.young,"poisson_ratio":d.poisson,"density_kg_m3":d.density},"divisions":d.divisions,"modes":d.modes,"element_order":d.element_order});
             if !d.body.is_empty(){inputs["body"]=json!(d.body);}
-            if !d.mesh_file.is_empty(){inputs["mesh_path"]=json!(d.mesh_file);}
+            if !d.mesh_file.is_empty(){inputs["mesh_path"]=json!(d.mesh_file);} else if let Some(mesh)=&d.stored_mesh {inputs["mesh"]=mesh.clone();}
             app.run("fem.model.create",inputs).map_err(|e|e.to_string())?;
-            start(app,ui.ctx(),json!({"id":d.id,"flexible":flexible,"force_n":d.force,"motion":{"duration_s":d.duration,"steps":1000,"samples":101,"angle_deg":d.angle,"frequency_hz":1.,"ramp_s":d.duration.min(0.2)}}))
+            start(app,ui.ctx(),json!({"id":d.id,"flexible":flexible,"force_n":d.force,"moment_nm":d.moment,"motion":{"duration_s":d.duration,"steps":1000,"samples":101,"angle_deg":d.angle,"frequency_hz":1.,"ramp_s":d.duration.min(0.2)}}))
         })();d.error=outcome.err().unwrap_or_default();}
     }});
     if running {
@@ -290,6 +349,14 @@ fn form(app: &mut SolveApp, ui: &mut egui::Ui) {
         let id = m["id"].as_str().unwrap_or_default();
         ui.horizontal(|ui| {
             ui.strong(id);
+            let edit = ui.add_enabled(!running, egui::Button::new(app.tr("ui.fem_rom.edit")));
+            scenario::publish_handle(&format!("fem:rom:edit:{id}"), edit.rect.center());
+            if edit.clicked() {
+                match model_draft(app, id) {
+                    Ok(draft) => d = draft,
+                    Err(error) => d.error = error,
+                }
+            }
             ui.label(app.tr(if m["current"] == true { "ui.fem_rom.current" } else { "ui.fem_rom.stale" }));
             let mut enabled = m["enabled"] == true;
             let b = ui.add_enabled(

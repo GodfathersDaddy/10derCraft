@@ -2,6 +2,12 @@
   "schema": "10dercraft.examples/1",
   "examples": [
     {
+      "id": "robot-profile-8kg",
+      "title": "Roboter 8 kg - Rohrprofil-Entwurf",
+      "path": "examples/projects/Roboter-Rohrprofile-8kg-Entwurf.solidcraft",
+      "description": "Berechnungsgesteuerte Rohrquerschnitte, STEP-Rohrteile und Stückliste. Achsanschlüsse und Antriebe in Ausarbeitung."
+    },
+    {
       "id": "flexarm-rom",
       "title": "Flexarm FEM-ROM-MKS",
       "path": "examples/projects/Flexarm-FEM-ROM-MKS.solidcraft",

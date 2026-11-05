@@ -108,5 +108,10 @@
     "path": "examples/projects/Flexarm-FEM-ROM-MKS.solidcraft",
     "sha256": "70c61f7590f7d9a9e590287cc1794fac611103f9c49dc1e09dc81732ded16440",
     "bytes": 702150
+  },
+  {
+    "path": "examples/projects/Roboter-Rohrprofile-8kg-Entwurf.solidcraft",
+    "sha256": "9fd008c4f04ffc25b39389c38b6afd5e0dee4c4ce5781f800c59c599bb717b76",
+    "bytes": 1199094
   }
 ]

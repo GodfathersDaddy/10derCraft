@@ -2008,3 +2008,10 @@ Eine weitere isolierte Fensterstartpruefung blieb beim Grafikstart ohne erste UI
 34 vom Benutzer gelieferte STL-Druckteile anhand der Montagepositionen aus der zugehoerigen SCAD-Datei in native Komponenten eingeordnet. 23 radiale Schubgelenke, eine abhebbare Spitze, starre Etagen und eine Bewegungsstudie aufgebaut. Vor der spaeteren Testpause wurden 72 Positionen mit maximal 3,013e-12 mm Schwerpunkt-Verschiebungsfehler und 34 geschlossene Netze nachgewiesen. Das ist ein Montage-/Importnachweis. Parametrische BRep-Rekonstruktion, physischer Probedruck und vollstaendige Kollisionspruefung stehen aus.
 
 Die vollstaendige Abschlusspruefung passierte die statischen Gates und stoppte bei zwei Clippy-Hinweisen zu konstanten Dreiergruppen. Die Aufrufe wurden auf as_chunks::<3> umgestellt. Der Benutzer ordnete vor Veroeffentlichung an, fuer diesen Zwischenstand keine weiteren Tests auszufuehren. Danach wurden keine weiteren Testlaeufe gestartet. Die korrigierten Stellen und portablen Skriptpfade wurden nicht erneut geprueft. Details in ZWISCHENSTAND_2026-11-05.md.
+
+
+## 05.11.2026 - Rohrprofil-Entwurf und editierbare ROM-Einstellungen
+
+Benutzer legt grossen Arm mit 8 kg Nutzlast und Metallfertigung fest. Separate native Variante mit 160x8-mm- und 140x6-mm-Rohrquerschnitten aufgebaut. Durchgehende Bohrungen und veroeffentlichte Calcpad-Wandstaerkenreferenzen treiben CAD. Bestehende Varianten erhalten Rohrformeln. STEP-Einzelrohre und native Stueckliste ausgegeben. Achsverbindungen, Lager-/Antriebsauslegung und weitere Ueberlappungen bleiben offen. Details in ROBOTER_FERTIGUNGSENTWURF.md.
+
+ROM-Einstellungen lassen sich aus MKS und FEM erneut laden. Importnetz, Material, Elementordnung, Schnittstellenreihenfolge und Lasten werden uebernommen. Momenteneingabe hinzugefuegt. Die Balkenvorpruefung verwendet Kreisringflaeche und -traegheitsmoment bei vorhandenen Wandreferenzen und verweigert erkennbare CAD-Volumenabweichungen. Das ersetzt keine Volumen-FEM. Die Anwendung wurde gebaut. Gemaess Benutzeranweisung keine anschliessenden Testreihen.

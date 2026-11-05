@@ -122,8 +122,24 @@ pub(super) fn solve(s: &mut Session, p: &Value) -> Result<Value> {
         let moment = (tcp - end).cross(force); // N mm
         let local_f = [force.dot(x), force.dot(y), force.dot(z)];
         let local_m = [moment.dot(x), moment.dot(y), moment.dot(z)];
-        let area = PI * r * r;
-        let inertia = PI * r.powi(4) / 4.;
+        let thickness = format!("ref_t_{name}");
+        let inner_radius = if s.doc.param(&thickness).is_some() {
+            let wall = s.doc.eval(&thickness, Kind::Length)?;
+            if !wall.is_finite() || wall <= 0. || wall >= r {
+                return Err(error("tube wall thickness must be positive and smaller than its outer radius"));
+            }
+            r - wall
+        } else {
+            0.
+        };
+        let area = PI * (r * r - inner_radius * inner_radius);
+        let inertia = PI * (r.powi(4) - inner_radius.powi(4)) / 4.;
+        let native = s.model.state();
+        let body = native.bodies.iter().find(|body| body.name == name).ok_or_else(|| error("arm CAD body missing"))?;
+        let volume = body.measure().map_err(|e| error(e.to_string()))?.volume;
+        if !volume.is_finite() || (volume - area * l).abs() > area * l * 2e-4 {
+            return Err(error("arm CAD volume differs from its round section; use component volume FEM for machined geometry"));
+        }
         let polar = 2. * inertia;
         let shear = young / (2. * (1. + nu));
         let v = bending(l, young * inertia, local_f[1], local_m[2], n)?;
@@ -151,7 +167,7 @@ pub(super) fn solve(s: &mut Session, p: &Value) -> Result<Value> {
         if l / (2. * r) < 10. {
             warnings.push("Arm L/diameter <10: Euler-Bernoulli shear omission may be significant; use Timoshenko or solid FEM for design decisions.");
         }
-        reports.push(json!({"body":name,"feature":feature.id,"occurrence":occurrence,"idealization":"native cylinder dimensions; all attached geometry rigid, omitted from section stiffness","length_mm":l,"radius_mm":r,"young_mpa":young,"poisson_ratio":nu,"force_world_n":force,"tip_moment_world_nmm":moment,"root_moment_world_nmm":root_m,"tip_displacement_mm":displacement,"tip_rotation_rad":rotation,"tcp_contribution_mm":contribution,"max_normal_stress_mpa":stress,"nodes":nodes,"elements":n,"bending_dofs_per_plane":2*(n+1)}));
+        reports.push(json!({"body":name,"feature":feature.id,"occurrence":occurrence,"idealization":"native round section with CAD volume consistency; attached geometry rigid and omitted from section stiffness","length_mm":l,"radius_mm":r,"inner_radius_mm":inner_radius,"area_mm2":area,"second_moment_mm4":inertia,"young_mpa":young,"poisson_ratio":nu,"force_world_n":force,"tip_moment_world_nmm":moment,"root_moment_world_nmm":root_m,"tip_displacement_mm":displacement,"tip_rotation_rad":rotation,"tcp_contribution_mm":contribution,"max_normal_stress_mpa":stress,"nodes":nodes,"elements":n,"bending_dofs_per_plane":2*(n+1)}));
     }
     let magnitude = tcp_displacement.len();
     if magnitude > limit {

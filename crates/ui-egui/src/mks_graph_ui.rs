@@ -347,6 +347,13 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui, model: &Value) {
                     let Some(model_id) = model["id"].as_str() else { continue };
                     ui.separator();
                     ui.strong(format!("ROM: {model_id}"));
+                    let edit = ui.button(app.tr("ui.fem_rom.edit"));
+                    scenario::publish_handle(&format!("mks:rom:edit:{model_id}"), edit.rect.center());
+                    if edit.clicked()
+                        && let Err(error) = crate::fem_rom_ui::edit_model(app, ui.ctx(), model_id)
+                    {
+                        draft.error = error;
+                    }
                     ui.label(app.tr(if model["current"] == true { "ui.fem_rom.current" } else { "ui.fem_rom.stale" }));
                     ui.label(format!("{} → {} DOF", model["full_dofs"], model["reduced_dofs"]));
                     let mut enabled = model["enabled"] == true;

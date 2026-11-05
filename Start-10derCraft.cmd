@@ -3,7 +3,13 @@ setlocal
 set "STUDIO_ROOT=%~dp0"
 set "STUDIO_SOURCE=%STUDIO_ROOT%solidcraft"
 if exist "%STUDIO_ROOT%Cargo.toml" set "STUDIO_SOURCE=%STUDIO_ROOT%"
+if not defined SOLIDCRAFT_SIMULATION_PYTHON if exist "%STUDIO_ROOT%python\python.exe" set "SOLIDCRAFT_SIMULATION_PYTHON=%STUDIO_ROOT%python\python.exe"
 if not defined SOLIDCRAFT_SIMULATION_PYTHON if exist "%STUDIO_ROOT%simulation\.venv\Scripts\python.exe" set "SOLIDCRAFT_SIMULATION_PYTHON=%STUDIO_ROOT%simulation\.venv\Scripts\python.exe"
+if not defined SOLIDCRAFT_CALCPAD_HELPER if exist "%STUDIO_ROOT%calcpad\CalcpadLocal.exe" set "SOLIDCRAFT_CALCPAD_HELPER=%STUDIO_ROOT%calcpad\CalcpadLocal.exe"
+if exist "%STUDIO_ROOT%bin\solidcraft.exe" (
+    start "10derCraft" "%STUDIO_ROOT%bin\solidcraft.exe" %*
+    exit /b 0
+)
 set "STUDIO_IMAGE=solidcraft.exe"
 if exist "%STUDIO_SOURCE%\target\native-ui\ci\launch-target.txt" (
     set /p "STUDIO_IMAGE="<"%STUDIO_SOURCE%\target\native-ui\ci\launch-target.txt"
