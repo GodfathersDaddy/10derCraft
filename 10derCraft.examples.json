@@ -2,6 +2,18 @@
   "schema": "10dercraft.examples/1",
   "examples": [
     {
+      "id": "robot-servo-installation",
+      "title": "Roboter 8 kg - Servoeinbau und Gelenkmomente",
+      "path": "examples/projects/Roboter-8kg-Servoeinbau-Entwurf.solidcraft",
+      "description": "Katalogmotor mit Haltebremse, motorseitige Adapterbaugruppe und berechnete Achsmomente. Getriebe- und Lageranschlüsse in Ausarbeitung."
+    },
+    {
+      "id": "servo-motor-mount",
+      "title": "A2 - Servomotor-Montage",
+      "path": "examples/projects/A2-Servomotor-Montage.solidcraft",
+      "description": "Native wiederverwendbare Unterbaugruppe mit Panasonic-Montagemodell, bearbeitbarer Adapterplatte und M8-Normteilen."
+    },
+    {
       "id": "robot-profile-8kg",
       "title": "Roboter 8 kg - Rohrprofil-Entwurf",
       "path": "examples/projects/Roboter-Rohrprofile-8kg-Entwurf.solidcraft",

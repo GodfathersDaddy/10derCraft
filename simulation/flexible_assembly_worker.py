@@ -57,6 +57,7 @@ def run(envelope):
             result=[0.]*6;result[5 if kind=='revolute' else 2]=amplitude*v;return result
         return offset
     joints=[]
+    moment_sensors={}
     for j in model['joints']:
         a,b=j['a'],j['b'];pivot=fe.finite(j['pivot_world_m'],(3,));rotation=fe.finite(j['rotation_world'],(3,3))
         if a not in ids or b not in ids or a==b or j['kind'] not in ['revolute','slider'] or not np.allclose(rotation.T@rotation,np.eye(3),atol=1e-8):raise ValueError('invalid joint')
@@ -64,6 +65,7 @@ def run(envelope):
         obj=mbs.AddObject(GenericJoint(name=j['name'],markerNumbers=markers,rotationMarker0=rotation.tolist(),rotationMarker1=rotation.tolist(),constrainedAxes=axes,offsetUserFunction=motion(drive,j['kind']) if drive else 0))
         reaction=mbs.AddSensor(SensorObject(objectNumber=obj,outputVariableType=exu.OutputVariableType.ForceLocal,storeInternal=True,writeToFile=False))
         frames=[{name:mbs.AddSensor(SensorMarker(markerNumber=m,outputVariableType=ov,storeInternal=True,writeToFile=False)) for name,ov in ovs.items()} for m in markers]
+        moment_sensors[str(j['id'])]=mbs.AddSensor(SensorObject(objectNumber=obj,outputVariableType=exu.OutputVariableType.TorqueLocal,storeInternal=True,writeToFile=False))
         joints.append((j,reaction,frames))
     for load in model['loads']:
         m=marker(load['block'],fe.finite(load['position_world_m'],(3,)),load['port'])
@@ -102,7 +104,7 @@ def run(envelope):
         coordinates[str(j['id'])]=values.tolist();reactions[str(j['id'])]=data(sensor).tolist()
     if max_pos>1e-5 or max_axis>1e-5:raise ValueError('deformed interface joint residual exceeds tolerance')
     energy[:,2]=energy[:,0]+energy[:,1]
-    return dict(schema='solidcraft.assembly-result/1',status='success',job=job,backend_version=exu.__version__,times_s=times.tolist(),trajectories=trajectories,flexible_states=states,energy_j=energy.tolist(),joint_forces_local_n=reactions,joint_coordinates_si=coordinates,numerics=dict(generalized_alpha_spectral_radius=.8,force_initial_sample_valid=False),summary=dict(max_position_constraint_m=max_pos,max_axis_alignment_error=max_axis,max_energy_change_j=float(max(abs(energy[:,2]-energy[0,2])))),provenance=dict(worker_sha256=sha256(Path(__file__).read_bytes()).hexdigest(),job_sha256=sha256(json.dumps(job,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest(),completed_utc=datetime.now(timezone.utc).isoformat()),assumptions=['Mixed rigid/FFRF open chain; stiffness-proportional damping calibrated to 1% at the lowest fixed-interface frequency.','All flexible joints and loads act through actual reduced CAD surface node sets, not the floating reference frame.','Small elastic deformation, RBE2 rigid surfaces; no contact/plasticity. Zero initial elastic displacement/velocity; no static prestress initialization.','Energy includes full FE nodal kinetic energy, elastic strain and gravitational potential; actuator/load work is not subtracted.'])
+    return dict(schema='solidcraft.assembly-result/1',status='success',job=job,backend_version=exu.__version__,times_s=times.tolist(),trajectories=trajectories,flexible_states=states,energy_j=energy.tolist(),joint_forces_local_n=reactions,joint_torques_local_nm={joint_id:data(sensor).tolist() for joint_id,sensor in moment_sensors.items()},joint_coordinates_si=coordinates,numerics=dict(generalized_alpha_spectral_radius=.8,force_initial_sample_valid=False),summary=dict(max_position_constraint_m=max_pos,max_axis_alignment_error=max_axis,max_energy_change_j=float(max(abs(energy[:,2]-energy[0,2])))),provenance=dict(worker_sha256=sha256(Path(__file__).read_bytes()).hexdigest(),job_sha256=sha256(json.dumps(job,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest(),completed_utc=datetime.now(timezone.utc).isoformat()),assumptions=['Mixed rigid/FFRF open chain; stiffness-proportional damping calibrated to 1% at the lowest fixed-interface frequency.','All flexible joints and loads act through actual reduced CAD surface node sets, not the floating reference frame.','Small elastic deformation, RBE2 rigid surfaces; no contact/plasticity. Zero initial elastic displacement/velocity; no static prestress initialization.','Energy includes full FE nodal kinetic energy, elastic strain and gravitational potential; actuator/load work is not subtracted.'])
 
 if __name__=='__main__':
     try:

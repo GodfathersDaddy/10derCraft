@@ -593,10 +593,20 @@ fn joint_sensing(app: &SolveApp, ui: &mut egui::Ui, joint: &Value, draft: &mut D
     let selected = draft.outputs.entry(id).or_insert_with(|| BTreeSet::from([3]));
     ui.horizontal_wrapped(|ui| {
         let angular = joint["kind"] == "revolute";
-        for (i, label) in
-            ["Fx [N]", "Fy [N]", "Fz [N]", "|F| [N]", if angular { "q [deg]" } else { "q [mm]" }, if angular { "ω [deg/s]" } else { "v [mm/s]" }]
-                .iter()
-                .enumerate()
+        for (i, label) in [
+            "Fx [N]",
+            "Fy [N]",
+            "Fz [N]",
+            "|F| [N]",
+            if angular { "q [deg]" } else { "q [mm]" },
+            if angular { "ω [deg/s]" } else { "v [mm/s]" },
+            "Mx [Nm]",
+            "My [Nm]",
+            "Mz [Nm]",
+            "|M| [Nm]",
+        ]
+        .iter()
+        .enumerate()
         {
             let mut enabled = selected.contains(&i);
             let r = ui.checkbox(&mut enabled, *label);
@@ -1013,7 +1023,11 @@ fn graph(app: &SolveApp, ui: &mut egui::Ui, blocks: &[Value], joints: &[Value], 
 
                     wire(source, target, t.axis_y);
                     let outputs = draft.outputs.get(&id).cloned().unwrap_or_else(|| BTreeSet::from([3]));
-                    let labels = outputs.iter().filter_map(|i| ["Fx", "Fy", "Fz", "|F|", "q", "v"].get(*i).copied()).collect::<Vec<_>>().join(", ");
+                    let labels = outputs
+                        .iter()
+                        .filter_map(|i| ["Fx", "Fy", "Fz", "|F|", "q", "v", "Mx", "My", "Mz", "|M|"].get(*i).copied())
+                        .collect::<Vec<_>>()
+                        .join(", ");
                     painter.text(rect.center_bottom() + vec2(0., -8.), Align2::CENTER_BOTTOM, labels, FontId::proportional(10.), t.accent);
                     let lane = if vertical { sensor.center().y } else { ra.bottom().max(rb.bottom()) + 12. };
                     let _ = lane;
@@ -1336,18 +1350,24 @@ fn scope(app: &SolveApp, ui: &mut egui::Ui, joints: &[Value], state: &Value, dra
     ui.separator();
     ui.heading(app.tr("ui.mks_ext.scope_title"));
     ui.horizontal_wrapped(|ui| {
-        for (key, quantity, component) in [("all_forces", 0, 3), ("all_angles", 1, 4), ("all_positions", 3, 4)] {
+        for (key, quantity, component) in
+            [("all_forces", 0, 3), ("all_angles", 1, 4), ("all_positions", 3, 4), ("all_moments", 5, 9), ("all_drive_moments", 5, 8)]
+        {
             let button = ui.button(app.tr(&format!("ui.mks_workflow.{key}")));
             scenario::publish_handle(&format!("mks:scope:{key}"), button.rect.center());
             if button.clicked() {
                 for joint in joints {
-                    if quantity == 1 && joint["kind"] != "revolute" || quantity == 3 && joint["kind"] != "slider" {
+                    if (quantity == 1 || component == 8) && joint["kind"] != "revolute" || quantity == 3 && joint["kind"] != "slider" {
                         continue;
                     }
                     if let Some(id) = joint["id"].as_u64() {
                         draft.sensors.insert(id);
                         draft.unscoped.remove(&id);
-                        draft.outputs.entry(id).or_default().insert(component);
+                        let outputs = draft.outputs.entry(id).or_default();
+                        if quantity == 5 {
+                            outputs.retain(|value| *value < 6);
+                        }
+                        outputs.insert(component);
                     }
                 }
                 draft.chart_kind = quantity;
@@ -1364,7 +1384,9 @@ fn scope(app: &SolveApp, ui: &mut egui::Ui, joints: &[Value], state: &Value, dra
     if !draft.unscoped.is_empty() {
         ui.small(app.tr("ui.mks_cad.scope_unconnected"));
     }
-    ui.small(app.tr(if draft.chart_kind == 0 { "ui.mks_graph.force_note" } else { "ui.mks_ext.kinematic_note" }));
+    if draft.chart_kind != 5 {
+        ui.small(app.tr(if draft.chart_kind == 0 { "ui.mks_graph.force_note" } else { "ui.mks_ext.kinematic_note" }));
+    }
     ui.horizontal_wrapped(|ui| {
         for j in joints {
             if let Some(id) = j["id"].as_u64() {
@@ -1384,7 +1406,7 @@ fn scope(app: &SolveApp, ui: &mut egui::Ui, joints: &[Value], state: &Value, dra
         }
     });
     ui.horizontal_wrapped(|ui| {
-        for (index, key) in ["force", "angle", "angular_speed", "position", "speed"].iter().enumerate() {
+        for (index, key) in ["force", "angle", "angular_speed", "position", "speed", "moment"].iter().enumerate() {
             let r = ui.selectable_value(&mut draft.chart_kind, index, app.tr(&format!("ui.mks_ext.plot.{key}")));
             scenario::publish_handle(&format!("mks:scope:quantity:{index}"), r.rect.center());
         }
@@ -1398,16 +1420,23 @@ fn scope(app: &SolveApp, ui: &mut egui::Ui, joints: &[Value], state: &Value, dra
                 }
             });
     }
+    if draft.chart_kind == 5 {
+        ui.label(app.tr("ui.mks_moment.local_frame"));
+    }
     if state["result_current"] != true {
         ui.label(app.tr("ui.mks_graph.no_result"));
         return;
     }
     let result = &state["data"]["result"];
-    if draft.chart_kind > 0 && !result["joint_coordinates_si"].is_object() {
+    if (1..=4).contains(&draft.chart_kind) && !result["joint_coordinates_si"].is_object() {
         ui.label(app.tr("ui.mks_ext.recalculate"));
         return;
     }
 
+    if draft.chart_kind == 5 && !result["joint_torques_local_nm"].is_object() {
+        ui.label(app.tr("ui.mks_ext.recalculate"));
+        return;
+    }
     if state["data"]["job"]["settings"]["drivers"].as_array().is_some_and(|v| !v.is_empty())
         && !result["numerics"]["generalized_alpha_spectral_radius"].as_f64().is_some_and(|v| v > 0. && v < 1.)
     {
@@ -1423,8 +1452,10 @@ fn scope(app: &SolveApp, ui: &mut egui::Ui, joints: &[Value], state: &Value, dra
     for id in draft.sensors.iter().filter(|id| !draft.unscoped.contains(id)).take(8) {
         let outputs = draft.outputs.get(id).cloned().unwrap_or_else(|| BTreeSet::from([draft.component]));
         let angular = joints.iter().find(|j| j["id"] == *id).is_some_and(|j| j["kind"] == "revolute");
-        for component in outputs.iter().copied().filter(|i| *i < 6) {
-            let family = if component < 4 {
+        for component in outputs.iter().copied().filter(|i| *i < 10) {
+            let family = if component >= 6 {
+                5
+            } else if component < 4 {
                 0
             } else if angular {
                 if component == 4 { 1 } else { 2 }
@@ -1436,19 +1467,25 @@ fn scope(app: &SolveApp, ui: &mut egui::Ui, joints: &[Value], state: &Value, dra
             if family != draft.chart_kind {
                 continue;
             }
-            let rows = if component < 4 { &result["joint_forces_local_n"][id.to_string()] } else { &result["joint_coordinates_si"][id.to_string()] };
+            let rows = if component >= 6 {
+                &result["joint_torques_local_nm"][id.to_string()]
+            } else if component < 4 {
+                &result["joint_forces_local_n"][id.to_string()]
+            } else {
+                &result["joint_coordinates_si"][id.to_string()]
+            };
             let rows = rows.as_array().map(Vec::as_slice).unwrap_or(&[]);
             let points: Vec<_> = times
                 .iter()
                 .zip(rows)
-                .skip(if component < 4 { 1 } else { 0 })
+                .skip(if (4..=5).contains(&component) { 0 } else { 1 })
                 .filter_map(|(time, row)| {
-                    let value = if component >= 4 {
+                    let value = if (4..=5).contains(&component) {
                         row.get(component - 4)?.as_f64()? * if angular { 180. / std::f64::consts::PI } else { 1000. }
-                    } else if component == 3 {
+                    } else if component == 3 || component == 9 {
                         (0..3).filter_map(|i| row.get(i).and_then(Value::as_f64)).map(|v| v * v).sum::<f64>().sqrt()
                     } else {
-                        row.get(component)?.as_f64()?
+                        row.get(if component >= 6 { component - 6 } else { component })?.as_f64()?
                     };
                     if !value.is_finite() {
                         return None;
@@ -1467,7 +1504,7 @@ fn scope(app: &SolveApp, ui: &mut egui::Ui, joints: &[Value], state: &Value, dra
         ui.label(app.tr("ui.mks_ext.no_channels"));
         return;
     }
-    ui.label(["N", "deg", "deg/s", "mm", "mm/s"].get(draft.chart_kind).copied().unwrap_or(""));
+    ui.label(["N", "deg", "deg/s", "mm", "mm/s", "Nm"].get(draft.chart_kind).copied().unwrap_or(""));
     let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width().min(1200.), 260.), Sense::click());
     let plot = rect.shrink2(vec2(65., 28.));
     let painter = ui.painter_at(rect);
@@ -1497,7 +1534,7 @@ fn scope(app: &SolveApp, ui: &mut egui::Ui, joints: &[Value], state: &Value, dra
         painter.text(
             rect.min + vec2(70. + (i % 4) as f32 * 180., 4. + (i / 4) as f32 * 16.),
             Align2::LEFT_TOP,
-            format!("{name} · {}", ["Fx", "Fy", "Fz", "|F|", "q", "dq/dt"][*component]),
+            format!("{name} · {}", ["Fx", "Fy", "Fz", "|F|", "q", "dq/dt", "Mx", "My", "Mz", "|M|"][*component]),
             FontId::proportional(11.),
             color,
         );

@@ -213,7 +213,11 @@ pub fn rows(app: &mut SolveApp, ui: &mut egui::Ui, k: &mut Pt, inputs: &[SelInpu
                 crate::ui_kit::text(
                     ui,
                     &v.as_f64()
-                        .map(|x| if key == "mass_kg" { format!("{x:.3} kg") } else { crate::prefs::show_mm(app, x, 1) })
+                        .map(|x| match key.as_str() {
+                            "mass_kg" => format!("{x:.3} kg"),
+                            "rated_torque_nm" => format!("{x:.3} Nm"),
+                            _ => crate::prefs::show_mm(app, x, 1),
+                        })
                         .unwrap_or_else(|| v.to_string()),
                     crate::ui_kit::Text::Cell,
                 );

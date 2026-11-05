@@ -1,0 +1,83 @@
+{
+  "scope": "Current servo-installation concept; assumed masses remain for other drive bodies; no motor/gearbox release.",
+  "source_project": "Roboter-8kg-Servoeinbau-Berechnet.solidcraft",
+  "simulation_summary": {
+    "max_axis_alignment_error": 1.264225244678408e-08,
+    "max_energy_change_j": 304.7239569902707,
+    "max_position_constraint_m": 1.970848775370322e-09
+  },
+  "axes": [
+    {
+      "joint": 1,
+      "peak_mz_nm": 451.2343828315291,
+      "rms_mz_nm": 133.12204404968713,
+      "assumed_ratio": 100,
+      "assumed_efficiency": 0.75,
+      "assumed_margin": 1.5,
+      "motor_rms_requirement_nm": 2.6624408809937425,
+      "motor_peak_requirement_nm": 9.024687656630583,
+      "motor_peak_speed_rpm": 3395.1585157376244
+    },
+    {
+      "joint": 2,
+      "peak_mz_nm": 589.5336547874103,
+      "rms_mz_nm": 373.2832004710614,
+      "assumed_ratio": 120,
+      "assumed_efficiency": 0.75,
+      "assumed_margin": 1.5,
+      "motor_rms_requirement_nm": 6.2213866745176905,
+      "motor_peak_requirement_nm": 9.825560913123505,
+      "motor_peak_speed_rpm": 1584.411571753978
+    },
+    {
+      "joint": 3,
+      "peak_mz_nm": 237.57571692373756,
+      "rms_mz_nm": 144.2312473060504,
+      "assumed_ratio": 100,
+      "assumed_efficiency": 0.75,
+      "assumed_margin": 1.5,
+      "motor_rms_requirement_nm": 2.884624946121008,
+      "motor_peak_requirement_nm": 4.751514338474752,
+      "motor_peak_speed_rpm": 2242.5599389065246
+    },
+    {
+      "joint": 4,
+      "peak_mz_nm": 27.201514377579727,
+      "rms_mz_nm": 11.914043862828981,
+      "assumed_ratio": 50,
+      "assumed_efficiency": 0.75,
+      "assumed_margin": 1.5,
+      "motor_rms_requirement_nm": 0.47656175451315924,
+      "motor_peak_requirement_nm": 1.088060575103189,
+      "motor_peak_speed_rpm": 2356.221013058111
+    },
+    {
+      "joint": 5,
+      "peak_mz_nm": 40.73844143386819,
+      "rms_mz_nm": 21.76521142729043,
+      "assumed_ratio": 80,
+      "assumed_efficiency": 0.75,
+      "assumed_margin": 1.5,
+      "motor_rms_requirement_nm": 0.5441302856822607,
+      "motor_peak_requirement_nm": 1.0184610358467048,
+      "motor_peak_speed_rpm": 1358.0731646837903
+    },
+    {
+      "joint": 6,
+      "peak_mz_nm": 1.4879326431356024,
+      "rms_mz_nm": 0.5753620565325068,
+      "assumed_ratio": 50,
+      "assumed_efficiency": 0.75,
+      "assumed_margin": 1.5,
+      "motor_rms_requirement_nm": 0.023014482261300272,
+      "motor_peak_requirement_nm": 0.059517305725424095,
+      "motor_peak_speed_rpm": 3141.708471381084
+    }
+  ],
+  "first_reaction_sample_excluded": true,
+  "rms_time_window_s": [
+    0.016,
+    8.0
+  ],
+  "rms_scope": "Stored 8-second movement window, not a steady-state thermal duty cycle"
+}

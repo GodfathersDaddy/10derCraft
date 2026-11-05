@@ -113,5 +113,15 @@
     "path": "examples/projects/Roboter-Rohrprofile-8kg-Entwurf.solidcraft",
     "sha256": "81d135f1cf4b782d7e6faab9caefcd290b615d7f18e9bcdcb5e633fd8af947fa",
     "bytes": 1199461
+  },
+  {
+    "path": "examples/projects/Roboter-8kg-Servoeinbau-Entwurf.solidcraft",
+    "sha256": "803b200ce5134d28f57fafe6f56bd93467496c9fd8f5d0c9f067d653f22a8309",
+    "bytes": 1577657
+  },
+  {
+    "path": "examples/projects/A2-Servomotor-Montage.solidcraft",
+    "sha256": "eda0388beaadebb8da635066f12f3a13005b0ea45e898fb6e228a6e8271d6415",
+    "bytes": 243169
   }
 ]

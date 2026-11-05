@@ -1,0 +1,14 @@
+{
+  "de": {
+    "ui.mks_ext.plot.moment": "Gelenkmoment",
+    "ui.mks_workflow.all_moments": "Alle Gelenkmomente",
+    "ui.mks_moment.local_frame": "Lokales Exudyn-Gelenkmoment in Nm. Erste Stichprobe ausgeblendet. |M| ist der Gesamtbetrag, Mz die Komponente der Drehachse. GenericJoint-Konvention beachten.",
+    "ui.mks_workflow.all_drive_moments": "Alle Drehachsen Mz"
+  },
+  "en": {
+    "ui.mks_ext.plot.moment": "Joint torque",
+    "ui.mks_workflow.all_moments": "All joint torques",
+    "ui.mks_moment.local_frame": "Local Exudyn joint torque in Nm. Initial sample omitted. |M| is the magnitude, Mz the revolute-axis component. Observe the GenericJoint convention.",
+    "ui.mks_workflow.all_drive_moments": "All revolute axes Mz"
+  }
+}

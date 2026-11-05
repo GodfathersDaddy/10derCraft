@@ -389,9 +389,19 @@ fn validate(job: &Value, result: &Value) -> Result<Value> {
     if reactions.len() != array(&job["model"]["joints"]).len() {
         return Err(error("incomplete joint force histories"));
     }
+    if let Some(moments) = result.get("joint_torques_local_nm")
+        && moments.as_object().is_none_or(|values| values.len() != reactions.len())
+    {
+        return Err(error("incomplete joint torque histories"));
+    }
     for j in array(&job["model"]["joints"]) {
         if !finite_rows(&reactions.get(&j["id"].to_string()).cloned().unwrap_or(Value::Null), 3) {
             return Err(error("invalid joint forces"));
+        }
+        if let Some(moments) = result.get("joint_torques_local_nm")
+            && !finite_rows(&moments[&j["id"].to_string()], 3)
+        {
+            return Err(error("invalid joint torques"));
         }
         if let Some(positions) = result.get("joint_coordinates_si")
             && !finite_rows(&positions[&j["id"].to_string()], 2)

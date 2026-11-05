@@ -48,6 +48,7 @@ def run(job):
                         ('velocity',exu.OutputVariableType.Velocity),('omega',exu.OutputVariableType.AngularVelocity)]:
             sensors[bid][name]=mbs.AddSensor(SensorBody(bodyNumber=body,outputVariableType=ov,storeInternal=True,writeToFile=False))
     joints=[]
+    moment_sensors={}
     drivers={drive['joint']:drive for drive in model.get('drivers',[])}
     def offset_function(drive,kind):
         amplitude=float(drive['amplitude_si']);ramp=float(drive['ramp_s'])
@@ -77,6 +78,7 @@ def run(job):
             rotationMatrixAxes=rotation,constrainedAxes=constrained,offsetUserFunction=offset_function(drive,j['kind']) if drive else 0)
         sensor=mbs.AddSensor(SensorObject(objectNumber=obj,outputVariableType=exu.OutputVariableType.ForceLocal,
                                         storeInternal=True,writeToFile=False))
+        moment_sensors[str(j['id'])]=mbs.AddSensor(SensorObject(objectNumber=obj,outputVariableType=exu.OutputVariableType.TorqueLocal,storeInternal=True,writeToFile=False))
         joints.append((j,pivot-initial[a],pivot-initial[b],z,sensor))
     for load in model['loads']:
         bid=load['block'];position=np.array(load['position_world_m'])-initial[bid]
@@ -134,9 +136,15 @@ def run(job):
         if j['kind']=='revolute':
             values=np.asarray(coordinates[str(j['id'])]);values[:,0]=np.unwrap(values[:,0]);coordinates[str(j['id'])]=values.tolist()
     reactions={str(j['id']):mbs.GetSensorStoredData(sensor)[:,1:].tolist() for j,_,_,_,sensor in joints}
+    moments={}
+    for joint_id,sensor in moment_sensors.items():
+        data=mbs.GetSensorStoredData(sensor)
+        if data.shape!=(samples,4) or not np.isfinite(data).all() or not np.allclose(data[:,0],times,atol=1e-10):
+            raise ValueError('inconsistent joint torque output')
+        moments[joint_id]=data[:,1:].tolist()
     energy_change=max(abs(e[2]-energy[0][2]) for e in energy)
     return dict(schema='solidcraft.assembly-result/1',status='success',job=job,backend_version=exu.__version__,
-        times_s=times.tolist(),trajectories=trajectories,energy_j=energy,joint_forces_local_n=reactions,joint_coordinates_si=coordinates,
+        times_s=times.tolist(),trajectories=trajectories,energy_j=energy,joint_forces_local_n=reactions,joint_torques_local_nm=moments,joint_coordinates_si=coordinates,
         numerics=dict(generalized_alpha_spectral_radius=.6 if drivers else 1.,force_initial_sample_valid=False),
         summary=dict(max_position_constraint_m=max_pos,max_axis_alignment_error=max_axis,max_energy_change_j=energy_change),
         provenance=dict(worker_sha256=sha256(Path(__file__).read_bytes()).hexdigest(),

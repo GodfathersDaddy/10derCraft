@@ -41,6 +41,8 @@ CAD bodies and joints define the physical assembly. In MKS, drag a motion source
 
 Supported dynamics include bounded open rigid and mixed rigid/FFRF trees with revolute/prismatic joints. Component FEM supports linear-elastic TET4/TET10 volume meshes, RBE2 transfer surfaces and Craig-Bampton reduction. Current assembly modal histories can be displayed in the individual component view. Existing ROM settings can be reopened from a block, preserving imported mesh data and surface order. Forces and moments can be edited in the FEM form.
 
+Native joint sensing also provides local torque components and their magnitude. Scope includes separate collective selections for total joint torque and revolute-axis Mz. The servo library contains an independently modelled Panasonic MSMF202L1H8 mounting envelope with catalogue mass. Its motor-side mounting module and a separate robot installation layout are included under Examples. [Method and remaining mechanical work](docs/10dercraft/MKS_GELENKMOMENTE_UND_A2_ANTRIEB.md)
+
 Automatic volume meshing covers complete primitive boxes and cylinders. Detailed multi-part groups require a conforming imported volume mesh and explicit connection assumptions. The detailed six-axis arm still needs complete flexible-group ROMs, mechanically resolved drive connections and manufacturing verification. Contact, a functioning gripper transmission and arbitrary controller execution remain open. See the [robot workflow status](docs/10dercraft/ROBOTER_ROM_WORKFLOW_STATUS.md). Upstream analytic drawing projection currently reports native involute surfaces as unsupported.
 
 ## Research and verification

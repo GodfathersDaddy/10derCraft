@@ -2020,3 +2020,12 @@ ROM-Einstellungen lassen sich aus MKS und FEM erneut laden. Importnetz, Material
 ### Normale Projektberechnung der Rohrprofilvariante
 
 Achtsekundiger Starrkoerper-MKS-Lauf mit 501 gespeicherten Zeitpunkten und allen sechs Quellen berechnet. Maximaler Gelenkpositionsrest 1,971e-9 m. Der Wert betrifft Zwangsbedingungen und ist kein Festigkeitsnachweis. Anschliessend Balken-FEM-Vorberechnung mit Kreisringquerschnitten und gesperrten Antrieben ausgefuehrt. TCP-Durchbiegung 0,113024 mm bei 78,48 N, ohne Eigengewicht und Gelenknachgiebigkeit. Beide Rohre haben L/D <10, daher Schubverformung und Anschlusssteifigkeit fuer die Auslegung weiter erforderlich. Keine flexible Rueckkopplung dieser Balkenrechnung in MKS. Die realen Modellberechnungen sind von den pausierten Testreihen getrennt. Kraftverlaeufe als CSV exportiert. Aktuelle native Projektdatei enthaelt die Berechnungsergebnisse.
+
+
+## 06.11.2026 - Gelenkmomente und realer Servo-Montageentwurf
+
+TorqueLocal-Sensoren an denselben GenericJoint-Elementen wie die Kraftsensoren fuer starre und FFRF-Baeume ergaenzt. Optionaler Datenzweig fuer historische Kompatibilitaet, vollstaendige und endliche Reihen werden durch die Engine geprueft. Neue native Gelenk-/Scope-Kanaele Mx/My/Mz/|M|, getrennte Sammelauswahl fuer Betrag und Drehachse. Native Ansichten aufgenommen. Erste Stichprobe in Reaktionsplots ausgelassen. Hersteller- und Methodenquellen in MKS_GELENKMOMENTE_UND_A2_ANTRIEB.md.
+
+Acht Sekunden Bewegung mit neu berechneten Momenten ausgefuehrt. Achse 2 im aktuellen Servoentwurf ca. 590 Nm Spitze, 373 Nm RMS ueber dieses Fenster. Vorlaeufige Annahmen i=120, eta=0.75 und Zuschlag 1.5 ergeben 6.22 Nm motorseitig RMS und 9.83 Nm Spitze, maximal ca. 1584 rpm. Der Gesamtmomentbetrag darf nicht als reine Drehachsen-Antriebslast verwendet werden. Thermische Dauerlast, Rotorreflexion, andere Kaufteilmassen und Bremslasten sind weiter offen.
+
+Panasonic MSMF202L1H8 als native Servo-Bibliotheksfamilie angelegt. Eigene Montagegeometrie aus Katalogmassen, 6.6 kg Ersatzmasse, vereinfachte Gehaeusehuelle. Motorseitige Adapter-Unterbaugruppe mit vier kosmetischen M8-Innengewindefeatures und expliziten Stahl-Normteilen aufgebaut. In separatem Roboterentwurf Stator am vorgelagerten Teil axis1 statt am bewegten Oberarm befestigt und Wellenbauraum geschaffen. Ideale starre Montageverbindung ist noch durch Halterung, Getriebe und Lagerung zu realisieren. Modell danach erneut berechnet. Breite Tests bleiben auf Benutzerwunsch pausiert.

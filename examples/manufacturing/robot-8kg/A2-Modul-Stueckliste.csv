@@ -1,0 +1,5 @@
+"item","part_number","description","revision","count","definition"
+"1","ISO 4762 M8x25","Socket head cap screw M8x25","","4","A2_ISO4762_M8x25_0; A2_ISO4762_M8x25_1; A2_ISO4762_M8x25_2; A2_ISO4762_M8x25_3"
+"2","ISO 7089 M8","Plain washer M8","","4","A2_ISO7089_M8_0; A2_ISO7089_M8_1; A2_ISO7089_M8_2; A2_ISO7089_M8_3"
+"3","MSMF202L1H8","Servo motor mounting model with holding brake MSMF202L1H8","","1","A2_Panasonic_MSMF202L1H8"
+"4","RB-A2-ADP-001","Turned and drilled motor adapter, four M8 tapped through holes","","1","A2_Motoradapter"

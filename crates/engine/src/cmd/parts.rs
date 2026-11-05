@@ -22,7 +22,7 @@ pub static COMMANDS: &[CommandSpec] = &[
         "the Insert Part dialog's command (same as parts.insert): family, size, length?, at?|point?+direction?, name?",
     ),
     CommandSpec::new("parts.insert", "Insert Part", insert).icon("fastener").params(
-        "family (socket_head_cap_screw | button_head_cap_screw | hex_bolt | hex_nut | washer | set_screw | dowel_pin | bearing | stepper_motor); size (\"M6\", or \"608\" for bearings); \
+        "family (socket_head_cap_screw | button_head_cap_screw | hex_bolt | hex_nut | washer | set_screw | dowel_pin | bearing | stepper_motor | servo_motor); size (\"M6\", or \"608\" for bearings); \
          length? (mm; screws, bolts, set screws, pins; default a standard length near 2.5 d); \
          at?: [x,y,z] on a hole's rim or wall (the part seats on the hole's face with a rigid joint) | point?: [x,y,z] with direction?: [x,y,z] (no joint); name?",
     ),
@@ -41,6 +41,7 @@ const FAMILIES: &[(&str, &str, &str)] = &[
     ("dowel_pin", "Parallel pin (dowel)", "ISO 8734"),
     ("bearing", "Deep groove ball bearing (envelope)", "ISO 15 (6000/6200/600 series)"),
     ("stepper_motor", "Stepper motor mounting model", "STEPPERONLINE 17HS19-2004S1"),
+    ("servo_motor", "Servo motor mounting model with holding brake", "Panasonic MSMF202L1H8"),
 ];
 
 /// ISO metric coarse: (size, d, pitch).
@@ -199,6 +200,8 @@ fn default_length(d: f64) -> f64 {
 /// One part's shape, in its own frame.
 #[derive(Clone, Debug, PartialEq)]
 enum Shape {
+    /// Verified mounting dimensions; cylindrical housing clearance envelope.
+    ServoMotor,
     /// Manufacturer mounting dimensions, with an envelope for the motor internals.
     Motor,
     /// A head (round, domed or hex), a shank down −z, an optional hex socket in the head's top.
@@ -239,6 +242,12 @@ fn shape(family: &str, size: &str, length: Option<f64>) -> std::result::Result<S
                 return Err("stepper_motor supports 17HS19-2004S1 with fixed 48 mm body length".into());
             }
             Shape::Motor
+        }
+        "servo_motor" => {
+            if size != "MSMF202L1H8" || length.is_some() {
+                return Err("servo_motor supports MSMF202L1H8 with fixed manufacturer dimensions".into());
+            }
+            Shape::ServoMotor
         }
         "socket_head_cap_screw" => {
             let (d, pitch) = metric(size).ok_or_else(|| need("metric"))?;
@@ -371,6 +380,20 @@ fn thread(s: &mut Session, d: f64, pitch: f64, at: Vec3) {
 fn build(s: &mut Session, sh: &Shape) -> Result<()> {
     let _frame = crate::frames::local_geometry();
     match *sh {
+        Shape::ServoMotor => {
+            run(s, "solid.box", json!({"corner":[-50,-50,-10],"length":100,"width":100,"height":10,"operation":"new"}))?;
+            run(s, "solid.cylinder", json!({"base":[0,0,-10],"diameter":135,"height":10,"operation":"intersect"}))?;
+            run(s, "solid.cylinder", json!({"base":[0,0,-201.5],"diameter":100,"height":191.5,"operation":"join"}))?;
+            run(s, "solid.cylinder", json!({"base":[0,0,0],"diameter":95,"height":3,"operation":"join"}))?;
+            run(s, "solid.cylinder", json!({"base":[0,0,2],"diameter":19,"height":53,"operation":"join"}))?;
+            run(s, "solid.box", json!({"corner":[6,-3,10],"length":5,"width":6,"height":42,"operation":"cut"}))?;
+            let pitch = 57.5 / 2_f64.sqrt();
+            for x in [-pitch, pitch] {
+                for y in [-pitch, pitch] {
+                    run(s, "solid.cylinder", json!({"base":[x,y,-11],"diameter":9,"height":12,"operation":"cut"}))?;
+                }
+            }
+        }
         Shape::Motor => {
             run(s, "solid.box", json!({"corner":[-21,-21,-48],"length":42,"width":42,"height":48,"operation":"new"}))?;
             for x in [-15.5, 15.5] {
@@ -442,6 +465,7 @@ fn library(_s: &mut Session, p: &Value) -> Result<Value> {
             "dowel_pin" => DOWEL.iter().map(|d| json!({"size": format!("{d}"), "d": d})).collect(),
             "bearing" => BEARINGS.iter().map(|r| json!({"size": r.0, "bore": r.1, "outer": r.2, "width": r.3})).collect(),
             "stepper_motor" => vec![json!({"size":"17HS19-2004S1","width":42,"body_length":48,"shaft_diameter":5,"shaft_projection":24,"pilot_diameter":22,"pilot_height":2,"mount_pitch":31,"mount_thread":"M3","mount_depth":4.5,"mass_kg":0.390,"source":"https://www.omc-stepperonline.com/download/17HS19-2004S1.pdf","representation":"mounting geometry; 390 g equivalent homogeneous mass, envelope inertia"})],
+            "servo_motor" => vec![json!({"size":"MSMF202L1H8","flange_width":100,"axial_envelope":201.5,"shaft_diameter":19,"shaft_projection":55,"pilot_diameter":95,"pilot_height":3,"mount_bolt_circle":115,"mount_hole_diameter":9,"flange_thickness":10,"mass_kg":6.6,"rated_torque_nm":6.37,"source":"https://mediap.industry.panasonic.eu/assets/imported/industrial.panasonic.com/ac/cdn/e/motor/fa-motor/ac-servo/catalog/minas-a6_ctlg_e.pdf","source_pages":"129-130; PDF page 66","representation":"mounting dimensions and 6.6 kg equivalent mass; cylindrical housing envelope, connector geometry and rotor dynamics omitted"})],
             _ => Vec::new(),
         };
         let (_, name, standard) = FAMILIES.iter().find(|f| f.0 == id).copied().unwrap_or(("", "", ""));
@@ -522,6 +546,7 @@ fn label(family: &str) -> &'static str {
         "set_screw" => "Set Screw",
         "dowel_pin" => "Dowel Pin",
         "stepper_motor" => "Stepper Motor",
+        "servo_motor" => "Servo Motor",
         _ => "Bearing",
     }
 }
@@ -554,7 +579,8 @@ fn insert(s: &mut Session, p: &Value) -> Result<Value> {
     let c = run(s, "component.create", json!({"name": name, "grounded": false}))?;
     let (comp, occ) = (c["component"].as_u64().unwrap_or(0), c["occurrence"].as_u64().unwrap_or(0));
     build(s, &sh)?;
-    if sh == Shape::Motor {
+    if matches!(sh, Shape::Motor | Shape::ServoMotor) {
+        let (mass_g, model) = if sh == Shape::ServoMotor { (6600., "MSMF202L1H8") } else { (390., "17HS19-2004S1") };
         let state = s.model.state();
         let bodies: Vec<_> = state.bodies.iter().filter(|body| s.doc.model_body_component(body) == comp).collect();
         let mut volume = 0.;
@@ -565,8 +591,8 @@ fn insert(s: &mut Session, p: &Value) -> Result<Value> {
             return Err(bad(cmd, "motor envelope has no finite positive volume"));
         }
         let names: Vec<_> = bodies.iter().map(|body| body.name.clone()).collect();
-        let material = format!("17HS19-2004S1 equivalent mass {comp}");
-        run(s, "material.create", json!({"name":material,"density_g_cm3":390000./volume,"color":"#40464f"}))?;
+        let material = format!("{model} equivalent mass {comp}");
+        run(s, "material.create", json!({"name":material,"density_g_cm3":mass_g*1000./volume,"color":"#40464f"}))?;
         run(s, "material.assign", json!({"bodies":names,"material":material}))?;
     }
     s.doc_mut().parts.insert(comp, solidcraft_doc::StandardPart { family: family.clone(), size: size.clone(), length: shape_len(&sh) });
@@ -579,7 +605,7 @@ fn insert(s: &mut Session, p: &Value) -> Result<Value> {
         let j = run(
             s,
             "joint.create",
-            json!({"type": "rigid", "a": {"occurrence": h, "circle": a}, "b": {"occurrence": occ, "point": [0, 0, 0], "z": if sh == Shape::Motor {[0,0,1]} else {[0,0,-1]}}, "name": format!("{name} seat")}),
+            json!({"type": "rigid", "a": {"occurrence": h, "circle": a}, "b": {"occurrence": occ, "point": [0, 0, 0], "z": if matches!(sh, Shape::Motor | Shape::ServoMotor) {[0,0,1]} else {[0,0,-1]}}, "name": format!("{name} seat")}),
         )?;
         out["joint"] = j["joint"].clone();
     } else if let Some(pt) = p.get("point").and_then(vec3) {

@@ -1,0 +1,688 @@
+{
+  "commands": [
+    {
+      "command": "file.new",
+      "params": {
+        "name": "A2 - Servomotor und bearbeitete Adapterplatte"
+      }
+    },
+    {
+      "command": "parameters.add",
+      "params": {
+        "name": "adapter_D",
+        "expression": "220 mm",
+        "unit": "mm"
+      }
+    },
+    {
+      "command": "parameters.add",
+      "params": {
+        "name": "adapter_t",
+        "expression": "15 mm",
+        "unit": "mm"
+      }
+    },
+    {
+      "command": "parameters.add",
+      "params": {
+        "name": "pilot_D",
+        "expression": "95.02 mm",
+        "unit": "mm"
+      }
+    },
+    {
+      "command": "parameters.add",
+      "params": {
+        "name": "pilot_depth",
+        "expression": "3.2 mm",
+        "unit": "mm"
+      }
+    },
+    {
+      "command": "parameters.add",
+      "params": {
+        "name": "shaft_clearance",
+        "expression": "22 mm",
+        "unit": "mm"
+      }
+    },
+    {
+      "command": "parameters.add",
+      "params": {
+        "name": "motor_PCD",
+        "expression": "115 mm",
+        "unit": "mm"
+      }
+    },
+    {
+      "command": "parameters.add",
+      "params": {
+        "name": "housing_PCD",
+        "expression": "190 mm",
+        "unit": "mm"
+      }
+    },
+    {
+      "command": "component.create",
+      "params": {
+        "name": "A2_Motoradapter",
+        "grounded": true
+      }
+    },
+    {
+      "command": "solid.cylinder",
+      "params": {
+        "name": "Adapter_Rohteil",
+        "body_name": "A2_Adapterplatte",
+        "diameter": "adapter_D",
+        "height": "adapter_t"
+      }
+    },
+    {
+      "command": "solid.cylinder",
+      "params": {
+        "name": "Wellenfreigang",
+        "diameter": "shaft_clearance",
+        "height": "adapter_t+2 mm",
+        "base": [
+          0,
+          0,
+          -1
+        ],
+        "operation": "cut",
+        "targets": [
+          "A2_Adapterplatte"
+        ]
+      }
+    },
+    {
+      "command": "solid.cylinder",
+      "params": {
+        "name": "Motorzentrierung",
+        "diameter": "pilot_D",
+        "height": "pilot_depth+1 mm",
+        "base": [
+          0,
+          0,
+          -1
+        ],
+        "operation": "cut",
+        "targets": [
+          "A2_Adapterplatte"
+        ]
+      }
+    },
+    {
+      "command": "solid.cylinder",
+      "params": {
+        "name": "Motor_M8_Kernloch_0",
+        "diameter": 6.8,
+        "height": "adapter_t+2 mm",
+        "base": [
+          40.658639918226484,
+          40.658639918226484,
+          -1
+        ],
+        "operation": "cut",
+        "targets": [
+          "A2_Adapterplatte"
+        ]
+      }
+    },
+    {
+      "command": "solid.cylinder",
+      "params": {
+        "name": "Motor_M8_Kernloch_1",
+        "diameter": 6.8,
+        "height": "adapter_t+2 mm",
+        "base": [
+          -40.65863991822648,
+          40.658639918226484,
+          -1
+        ],
+        "operation": "cut",
+        "targets": [
+          "A2_Adapterplatte"
+        ]
+      }
+    },
+    {
+      "command": "solid.cylinder",
+      "params": {
+        "name": "Motor_M8_Kernloch_2",
+        "diameter": 6.8,
+        "height": "adapter_t+2 mm",
+        "base": [
+          -40.65863991822649,
+          -40.65863991822648,
+          -1
+        ],
+        "operation": "cut",
+        "targets": [
+          "A2_Adapterplatte"
+        ]
+      }
+    },
+    {
+      "command": "solid.cylinder",
+      "params": {
+        "name": "Motor_M8_Kernloch_3",
+        "diameter": 6.8,
+        "height": "adapter_t+2 mm",
+        "base": [
+          40.65863991822647,
+          -40.65863991822649,
+          -1
+        ],
+        "operation": "cut",
+        "targets": [
+          "A2_Adapterplatte"
+        ]
+      }
+    },
+    {
+      "command": "solid.cylinder",
+      "params": {
+        "name": "Gehaeuse_M8_Durchgang_0",
+        "diameter": 9,
+        "height": "adapter_t+2 mm",
+        "base": [
+          95.0,
+          0.0,
+          -1
+        ],
+        "operation": "cut",
+        "targets": [
+          "A2_Adapterplatte"
+        ]
+      }
+    },
+    {
+      "command": "solid.cylinder",
+      "params": {
+        "name": "Gehaeuse_M8_Durchgang_1",
+        "diameter": 9,
+        "height": "adapter_t+2 mm",
+        "base": [
+          47.50000000000001,
+          82.27241335952166,
+          -1
+        ],
+        "operation": "cut",
+        "targets": [
+          "A2_Adapterplatte"
+        ]
+      }
+    },
+    {
+      "command": "solid.cylinder",
+      "params": {
+        "name": "Gehaeuse_M8_Durchgang_2",
+        "diameter": 9,
+        "height": "adapter_t+2 mm",
+        "base": [
+          -47.49999999999998,
+          82.27241335952168,
+          -1
+        ],
+        "operation": "cut",
+        "targets": [
+          "A2_Adapterplatte"
+        ]
+      }
+    },
+    {
+      "command": "solid.cylinder",
+      "params": {
+        "name": "Gehaeuse_M8_Durchgang_3",
+        "diameter": 9,
+        "height": "adapter_t+2 mm",
+        "base": [
+          -95.0,
+          1.1634144591899855e-14,
+          -1
+        ],
+        "operation": "cut",
+        "targets": [
+          "A2_Adapterplatte"
+        ]
+      }
+    },
+    {
+      "command": "solid.cylinder",
+      "params": {
+        "name": "Gehaeuse_M8_Durchgang_4",
+        "diameter": 9,
+        "height": "adapter_t+2 mm",
+        "base": [
+          -47.50000000000004,
+          -82.27241335952165,
+          -1
+        ],
+        "operation": "cut",
+        "targets": [
+          "A2_Adapterplatte"
+        ]
+      }
+    },
+    {
+      "command": "solid.cylinder",
+      "params": {
+        "name": "Gehaeuse_M8_Durchgang_5",
+        "diameter": 9,
+        "height": "adapter_t+2 mm",
+        "base": [
+          47.50000000000001,
+          -82.27241335952166,
+          -1
+        ],
+        "operation": "cut",
+        "targets": [
+          "A2_Adapterplatte"
+        ]
+      }
+    },
+    {
+      "command": "material.assign",
+      "params": {
+        "bodies": [
+          "A2_Adapterplatte"
+        ],
+        "material": "Aluminum"
+      }
+    },
+    {
+      "command": "component.metadata.set",
+      "params": {
+        "component": "A2_Motoradapter",
+        "part_number": "RB-A2-ADP-001",
+        "description": "Turned and drilled motor adapter, four M8 tapped through holes",
+        "properties": {
+          "Taps": "4 x M8 x 1.25 through, minor bore 6.8 mm",
+          "AssemblyStage": "Motor-side mounting concept. Gear-side support pending.",
+          "Material": "Aluminium grade to be specified"
+        }
+      }
+    },
+    {
+      "command": "component.activate",
+      "params": {
+        "component": 0
+      }
+    },
+    {
+      "command": "parts.insert",
+      "params": {
+        "family": "servo_motor",
+        "size": "MSMF202L1H8",
+        "point": [
+          0,
+          0,
+          0
+        ],
+        "name": "A2_Panasonic_MSMF202L1H8"
+      }
+    },
+    {
+      "command": "joint.as_built",
+      "params": {
+        "type": "rigid",
+        "a": "A2_Motoradapter",
+        "b": "A2_Panasonic_MSMF202L1H8",
+        "name": "Motor_Flansch",
+        "at": {
+          "occurrence": "A2_Motoradapter",
+          "point": [
+            0,
+            0,
+            0
+          ],
+          "z": [
+            0,
+            0,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "command": "parts.insert",
+      "params": {
+        "family": "washer",
+        "size": "M8",
+        "point": [
+          40.658639918226484,
+          40.658639918226484,
+          -11.6
+        ],
+        "name": "A2_ISO7089_M8_0"
+      }
+    },
+    {
+      "command": "parts.insert",
+      "params": {
+        "family": "socket_head_cap_screw",
+        "size": "M8",
+        "length": 25,
+        "point": [
+          40.658639918226484,
+          40.658639918226484,
+          -11.6
+        ],
+        "direction": [
+          0,
+          0,
+          -1
+        ],
+        "name": "A2_ISO4762_M8x25_0"
+      }
+    },
+    {
+      "command": "joint.as_built",
+      "params": {
+        "type": "rigid",
+        "a": "A2_Motoradapter",
+        "b": "A2_ISO7089_M8_0",
+        "name": "A2_ISO7089_M8_0_Sitz",
+        "at": {
+          "occurrence": "A2_Motoradapter",
+          "point": [
+            40.658639918226484,
+            40.658639918226484,
+            -11.6
+          ],
+          "z": [
+            0,
+            0,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "command": "joint.as_built",
+      "params": {
+        "type": "rigid",
+        "a": "A2_Motoradapter",
+        "b": "A2_ISO4762_M8x25_0",
+        "name": "A2_ISO4762_M8x25_0_Sitz",
+        "at": {
+          "occurrence": "A2_Motoradapter",
+          "point": [
+            40.658639918226484,
+            40.658639918226484,
+            -11.6
+          ],
+          "z": [
+            0,
+            0,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "command": "parts.insert",
+      "params": {
+        "family": "washer",
+        "size": "M8",
+        "point": [
+          -40.65863991822648,
+          40.658639918226484,
+          -11.6
+        ],
+        "name": "A2_ISO7089_M8_1"
+      }
+    },
+    {
+      "command": "parts.insert",
+      "params": {
+        "family": "socket_head_cap_screw",
+        "size": "M8",
+        "length": 25,
+        "point": [
+          -40.65863991822648,
+          40.658639918226484,
+          -11.6
+        ],
+        "direction": [
+          0,
+          0,
+          -1
+        ],
+        "name": "A2_ISO4762_M8x25_1"
+      }
+    },
+    {
+      "command": "joint.as_built",
+      "params": {
+        "type": "rigid",
+        "a": "A2_Motoradapter",
+        "b": "A2_ISO7089_M8_1",
+        "name": "A2_ISO7089_M8_1_Sitz",
+        "at": {
+          "occurrence": "A2_Motoradapter",
+          "point": [
+            -40.65863991822648,
+            40.658639918226484,
+            -11.6
+          ],
+          "z": [
+            0,
+            0,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "command": "joint.as_built",
+      "params": {
+        "type": "rigid",
+        "a": "A2_Motoradapter",
+        "b": "A2_ISO4762_M8x25_1",
+        "name": "A2_ISO4762_M8x25_1_Sitz",
+        "at": {
+          "occurrence": "A2_Motoradapter",
+          "point": [
+            -40.65863991822648,
+            40.658639918226484,
+            -11.6
+          ],
+          "z": [
+            0,
+            0,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "command": "parts.insert",
+      "params": {
+        "family": "washer",
+        "size": "M8",
+        "point": [
+          -40.65863991822649,
+          -40.65863991822648,
+          -11.6
+        ],
+        "name": "A2_ISO7089_M8_2"
+      }
+    },
+    {
+      "command": "parts.insert",
+      "params": {
+        "family": "socket_head_cap_screw",
+        "size": "M8",
+        "length": 25,
+        "point": [
+          -40.65863991822649,
+          -40.65863991822648,
+          -11.6
+        ],
+        "direction": [
+          0,
+          0,
+          -1
+        ],
+        "name": "A2_ISO4762_M8x25_2"
+      }
+    },
+    {
+      "command": "joint.as_built",
+      "params": {
+        "type": "rigid",
+        "a": "A2_Motoradapter",
+        "b": "A2_ISO7089_M8_2",
+        "name": "A2_ISO7089_M8_2_Sitz",
+        "at": {
+          "occurrence": "A2_Motoradapter",
+          "point": [
+            -40.65863991822649,
+            -40.65863991822648,
+            -11.6
+          ],
+          "z": [
+            0,
+            0,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "command": "joint.as_built",
+      "params": {
+        "type": "rigid",
+        "a": "A2_Motoradapter",
+        "b": "A2_ISO4762_M8x25_2",
+        "name": "A2_ISO4762_M8x25_2_Sitz",
+        "at": {
+          "occurrence": "A2_Motoradapter",
+          "point": [
+            -40.65863991822649,
+            -40.65863991822648,
+            -11.6
+          ],
+          "z": [
+            0,
+            0,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "command": "parts.insert",
+      "params": {
+        "family": "washer",
+        "size": "M8",
+        "point": [
+          40.65863991822647,
+          -40.65863991822649,
+          -11.6
+        ],
+        "name": "A2_ISO7089_M8_3"
+      }
+    },
+    {
+      "command": "parts.insert",
+      "params": {
+        "family": "socket_head_cap_screw",
+        "size": "M8",
+        "length": 25,
+        "point": [
+          40.65863991822647,
+          -40.65863991822649,
+          -11.6
+        ],
+        "direction": [
+          0,
+          0,
+          -1
+        ],
+        "name": "A2_ISO4762_M8x25_3"
+      }
+    },
+    {
+      "command": "joint.as_built",
+      "params": {
+        "type": "rigid",
+        "a": "A2_Motoradapter",
+        "b": "A2_ISO7089_M8_3",
+        "name": "A2_ISO7089_M8_3_Sitz",
+        "at": {
+          "occurrence": "A2_Motoradapter",
+          "point": [
+            40.65863991822647,
+            -40.65863991822649,
+            -11.6
+          ],
+          "z": [
+            0,
+            0,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "command": "joint.as_built",
+      "params": {
+        "type": "rigid",
+        "a": "A2_Motoradapter",
+        "b": "A2_ISO4762_M8x25_3",
+        "name": "A2_ISO4762_M8x25_3_Sitz",
+        "at": {
+          "occurrence": "A2_Motoradapter",
+          "point": [
+            40.65863991822647,
+            -40.65863991822649,
+            -11.6
+          ],
+          "z": [
+            0,
+            0,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "command": "component.activate",
+      "params": {
+        "component": 0
+      }
+    },
+    {
+      "command": "view.isometric",
+      "params": {}
+    },
+    {
+      "command": "view.fit",
+      "params": {}
+    },
+    {
+      "command": "file.save",
+      "params": {
+        "path": "A2-Servomotor-Montage.solidcraft"
+      }
+    },
+    {
+      "command": "file.export",
+      "params": {
+        "path": "A2-Motoradapter.step",
+        "bodies": [
+          "A2_Adapterplatte"
+        ]
+      }
+    },
+    {
+      "command": "assembly.bom",
+      "params": {
+        "path": "A2-Montage-Stueckliste.csv"
+      }
+    }
+  ]
+}
