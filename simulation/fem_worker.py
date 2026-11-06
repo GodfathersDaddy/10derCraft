@@ -9,6 +9,7 @@ from hashlib import sha256
 from pathlib import Path
 import json,math,sys
 import numpy as np
+from motion_profiles import joint_motion, SOURCE_SHA256
 from scipy import linalg,sparse
 from scipy.sparse import linalg as spla
 EDGES=[(0,1),(1,2),(0,2),(0,3),(1,3),(2,3)]
@@ -326,10 +327,8 @@ def flexible_result(job,points,tets,boundary,ports,K,M,basis,values):
         offset=port['origin']-origin-np.average(local[port['nodes']],axis=0,weights=port['weights'])
         return mbs.AddMarker(MarkerSuperElementRigid(bodyNumber=body,meshNodeNumbers=port['nodes'].tolist(),weightingFactors=port['weights'].tolist(),offset=offset.tolist()))
     mg=mbs.AddMarker(MarkerBodyRigid(bodyNumber=ground));mr=marker(root)
-    def motion(mbs,t,item,parameters):
-        phase=min(max(t/ramp,0),1);smooth=phase**3*(10+phase*(-15+6*phase))
-        return [0,0,0,0,0,amplitude*smooth*math.sin(2*math.pi*frequency*t)]
-    joint=mbs.AddObject(GenericJoint(markerNumbers=[mg,mr],constrainedAxes=[1]*6,offsetUserFunction=motion))
+    motion, velocity = joint_motion(dict(amplitude_si=amplitude, ramp_s=ramp, frequency_hz=frequency, profile='sine'), 'revolute', duration)
+    joint=mbs.AddObject(GenericJoint(markerNumbers=[mg,mr],constrainedAxes=[1]*6,offsetUserFunction=motion,offsetUserFunction_t=velocity))
     for load in job.get('loads',[]):
         port=next(p for p in ports if p['id']==load['interface']);m=marker(port);w=finite(load['wrench_world_n_nm'],(6,))
         mbs.AddLoad(LoadForceVector(markerNumber=m,loadVector=w[:3].tolist(),bodyFixed=False))
@@ -358,7 +357,7 @@ def run(job):
         limitations=['Linear isotropic elasticity: convergence and element-quality studies required; TET4 bending may be too stiff. TET10 has quadratic displacement and exact consistent mass; linear geometry.','RBE2 stiffens each selected surface; it is not pressure/distributing (RBE3) coupling.','Disconnected assembly meshes are refused; no automatic contact, bolt or adhesive model.','Small elastic deformation about a floating frame; no yielding, buckling or contact.','Flexible runs start with zero elastic displacement/velocity; gravity and loads excite startup vibration. Static prestress equilibrium is not initialized.'])
     if job['action']=='flexible':result['flexible']=flexible_result(job,points,tets,boundary,ports,K,M,basis,values)
     import scipy
-    result['provenance']=dict(worker_sha256=sha256(Path(__file__).read_bytes()).hexdigest(),job_sha256=sha256(json.dumps(job,sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest(),numpy_version=np.__version__,scipy_version=scipy.__version__)
+    result['provenance']=dict(motion_profiles_sha256=SOURCE_SHA256,worker_sha256=sha256(Path(__file__).read_bytes()).hexdigest(),job_sha256=sha256(json.dumps(job,sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest(),numpy_version=np.__version__,scipy_version=scipy.__version__)
     return result
 
 def main():

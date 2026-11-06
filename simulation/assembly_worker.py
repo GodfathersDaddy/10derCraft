@@ -7,6 +7,7 @@ import json
 import math
 from pathlib import Path
 import sys
+from motion_profiles import joint_motion, SOURCE_SHA256
 
 
 def run(job):
@@ -49,21 +50,9 @@ def run(job):
             sensors[bid][name]=mbs.AddSensor(SensorBody(bodyNumber=body,outputVariableType=ov,storeInternal=True,writeToFile=False))
     joints=[]
     moment_sensors={}
+    if settings.get('initial_equilibrium', False):
+        raise ValueError('static preload currently requires the flexible assembly backend')
     drivers={drive['joint']:drive for drive in model.get('drivers',[])}
-    def offset_function(drive,kind):
-        amplitude=float(drive['amplitude_si']);ramp=float(drive['ramp_s'])
-        profile=drive.get('profile','cosine');frequency=float(drive.get('frequency_hz',1.))
-        if profile=='half_cosine_displacement_then_hold':profile='cosine'
-        if profile not in ('cosine','quintic','sine') or not math.isfinite(frequency) or not .01<=frequency<=20:
-            raise ValueError('invalid motion source')
-        if not math.isfinite(amplitude) or not 0<ramp<=duration:raise ValueError('invalid driver')
-        def offset(mbs,t,itemNumber,parameters):
-            phase=min(max(t/ramp,0.),1.)
-            smooth=phase**3*(10+phase*(-15+6*phase))
-            value=(.5*(1-math.cos(math.pi*phase)) if profile=='cosine' else smooth if profile=='quintic' else smooth*math.sin(2*math.pi*frequency*t))
-            result=[0.]*6;result[5 if kind=='revolute' else 2]=amplitude*value
-            return result
-        return offset
     for j in model['joints']:
         a,b=j['a'],j['b'];pivot=np.array(j['pivot_world_m']);axis=np.array(j['axis_world'])
         if a not in ids or b not in ids or a==b or j['kind'] not in ('revolute','slider'):
@@ -74,8 +63,9 @@ def run(job):
             raise ValueError('invalid joint frame')
         drive=drivers.get(j['id'])
         constrained=[1]*6 if drive else ([1,1,1,1,1,0] if j['kind']=='revolute' else [1,1,0,1,1,1])
+        offset, velocity = joint_motion(drive, j['kind'], duration) if drive else (0, 0)
         obj=mbs.CreateGenericJoint(name=j['name'],bodyNumbers=[ids[a],ids[b]],position=pivot.tolist(),
-            rotationMatrixAxes=rotation,constrainedAxes=constrained,offsetUserFunction=offset_function(drive,j['kind']) if drive else 0)
+            rotationMatrixAxes=rotation,constrainedAxes=constrained,offsetUserFunction=offset,offsetUserFunction_t=velocity)
         sensor=mbs.AddSensor(SensorObject(objectNumber=obj,outputVariableType=exu.OutputVariableType.ForceLocal,
                                         storeInternal=True,writeToFile=False))
         moment_sensors[str(j['id'])]=mbs.AddSensor(SensorObject(objectNumber=obj,outputVariableType=exu.OutputVariableType.TorqueLocal,storeInternal=True,writeToFile=False))
@@ -147,7 +137,7 @@ def run(job):
         times_s=times.tolist(),trajectories=trajectories,energy_j=energy,joint_forces_local_n=reactions,joint_torques_local_nm=moments,joint_coordinates_si=coordinates,
         numerics=dict(generalized_alpha_spectral_radius=.6 if drivers else 1.,force_initial_sample_valid=False),
         summary=dict(max_position_constraint_m=max_pos,max_axis_alignment_error=max_axis,max_energy_change_j=energy_change),
-        provenance=dict(worker_sha256=sha256(Path(__file__).read_bytes()).hexdigest(),
+        provenance=dict(motion_profiles_sha256=SOURCE_SHA256,worker_sha256=sha256(Path(__file__).read_bytes()).hexdigest(),
             job_sha256=sha256(json.dumps(job,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest(),
             completed_utc=datetime.now(timezone.utc).isoformat()),
         assumptions=['Zero initial velocities; current CAD pose is the reference pose.',

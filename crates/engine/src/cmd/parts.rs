@@ -567,10 +567,16 @@ fn insert(s: &mut Session, p: &Value) -> Result<Value> {
     let size = str_(p, "size").ok_or_else(|| bad(cmd, "`size` is required"))?.to_string();
     let sh = shape(&family, &size, length_param(p, cmd)?).map_err(|e| bad(cmd, e))?;
     // A pick on a hole's rim also touches its end face: step onto the wall just inside the rim.
-    let at = p.get("at").and_then(vec3).map(|a| hole_wall(s, a).unwrap_or(a));
+    let pick = p.get("at").and_then(vec3);
+    let seat = pick.and_then(|a| hole_wall(s, a));
+    let at = seat.map(|(a, _)| a).or(pick);
     // The occurrence the hole belongs to, found before the part exists.
     let host = match at {
-        Some(a) => Some(super::joints::occurrence_at(s, a).ok_or_else(|| bad(cmd, "no body at `at` (pick a hole's rim or wall)"))?),
+        Some(a) => Some(
+            seat.map(|(_, host)| host)
+                .or_else(|| super::joints::occurrence_at(s, a))
+                .ok_or_else(|| bad(cmd, "no body at `at` (pick a hole's rim or wall)"))?,
+        ),
         None => None,
     };
     let name = str_(p, "name").map(str::to_string).unwrap_or_else(|| part_name(&family, &size, &sh));
@@ -626,21 +632,33 @@ fn insert(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(out)
 }
 
-/// A point on the cylindrical wall of the hole at `a`, a little in from the picked rim.
-fn hole_wall(s: &Session, a: Vec3) -> Option<Vec3> {
+/// A placed cylindrical wall and its owning occurrence, just inside a picked rim.
+fn hole_wall(s: &Session, a: Vec3) -> Option<(Vec3, u64)> {
     let st = s.model.state();
+    let placements: Vec<_> = s
+        .doc
+        .body_frames_with_source(&st)
+        .into_iter()
+        .flat_map(|(_, source, _, path, matrix)| {
+            let Some(body) = st.bodies.iter().find(|body| body.definition_name() == source) else { return Vec::new() };
+            let Some(inverse) = solidcraft_doc::mat_inverse(&matrix) else { return Vec::new() };
+            let mesh = body.mesh();
+            (0..body.body.face_count())
+                .filter_map(|face| solidcraft_doc::kernel::cylinder_face(&body.body, &mesh, face))
+                .map(|cylinder| (cylinder, matrix, inverse, path.last().copied().unwrap_or(0)))
+                .collect::<Vec<_>>()
+        })
+        .collect();
     let dirs = [Vec3::Z * -1.0, Vec3::Z, Vec3::X, Vec3::X * -1.0, Vec3::Y, Vec3::Y * -1.0];
-    for step in [0.2, 0.5, 1.0, 2.0] {
-        for b in &st.bodies {
+    for step in [0.0, 0.2, 0.5, 1.0, 2.0] {
+        for (c, matrix, inverse, occurrence) in &placements {
             for d in dirs {
-                let q = a + d * step;
-                if let Some(c) = solidcraft_doc::kernel::cylinder_face_at(&b.body, q) {
-                    let v = q - c.axis_point;
-                    let along = v.dot(c.axis);
-                    let on_wall = ((v - c.axis * along).len() - c.radius).abs() < 1e-3 && along > c.start && along < c.end;
-                    if on_wall {
-                        return Some(q);
-                    }
+                let q = solidcraft_doc::apply_point(inverse, a + d * step);
+                let v = q - c.axis_point;
+                let along = v.dot(c.axis);
+                let on_wall = ((v - c.axis * along).len() - c.radius).abs() < 1e-3 && along > c.start && along < c.end;
+                if on_wall {
+                    return Some((solidcraft_doc::apply_point(matrix, q), *occurrence));
                 }
             }
         }
@@ -861,6 +879,22 @@ mod tests {
         let (lo, hi) = bbox(&s, "SHCS M8x25");
         assert!((hi.z - 18.0).abs() < 1e-6 && (lo.z + 15.0).abs() < 1e-6, "{lo:?} {hi:?}");
         assert!(s.model.state().threads.iter().any(|t| t.designation == "M8" && (t.pitch - 1.25).abs() < 1e-9));
+    }
+
+    #[test]
+    fn a_screw_seats_on_a_translated_washer_inside_another_body_bounds() {
+        let mut s = Session::default();
+        run(&mut s, "solid.cylinder", json!({"base":[110,50,0],"radius":40,"height":30,"body_name":"Surround"}));
+        run(&mut s, "solid.cylinder", json!({"base":[110,50,-1],"radius":30,"height":32,"operation":"cut","targets":["Surround"]}));
+        run(&mut s, "solid.box", json!({"corner":[90,30,0],"length":40,"width":40,"height":10,"body_name":"Plate"}));
+        run(&mut s, "solid.cylinder", json!({"base":[110,50,-1],"diameter":6.4,"height":12,"operation":"cut","targets":["Plate"]}));
+        let washer = run(&mut s, "parts.insert", json!({"family":"washer","size":"M6","at":[113.2,50,9.9]}));
+        let screw = run(&mut s, "parts.insert", json!({"family":"socket_head_cap_screw","size":"M6","length":20,"at":[113.2,50,11.5]}));
+        let joint_id = screw["joint"].as_u64().unwrap_or(0);
+        let joint = s.doc.assembly.joints.iter().find(|joint| joint.id == joint_id).expect("seating joint");
+        assert_eq!(joint.a.occurrence, washer["occurrence"].as_u64().unwrap_or(0));
+        let (lo, hi) = bbox(&s, "SHCS M6x20");
+        assert!((lo.z + 8.4).abs() < 1e-6 && (hi.z - 17.6).abs() < 1e-6, "{lo:?} {hi:?}");
     }
 
     #[test]

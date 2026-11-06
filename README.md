@@ -33,11 +33,15 @@ For the local Mathcad-style worksheet backend, install .NET 10 SDK and run `powe
 
 The [example catalogue](10derCraft.examples.json) contains paths; [checksums](examples/10dercraft-manifest.json) identify the included project files. Calculations are saved inside projects; optional standalone worksheet documents are under [examples/calculations](examples/calculations/). A simple parameterized plate with FEM is deferred.
 
+## Updated robot examples
+
+The examples include a statically preloaded two-ROM robot and a separate shoulder-yoke assembly with three parameterized machined plates and forty native fasteners. Both contain a calculated six-axis movement. The optional static initialization is available in the MKS ribbon. The remaining gearbox, bearing and manufacturing qualification are documented in the robot reports. [Static initial state](docs/10dercraft/ROBOTER_STATISCHE_VORSPANNUNG.md), [shoulder assembly](docs/10dercraft/ROBOTER_SCHULTERGABEL.md)
+
 ## MKS workflow and video
 
 CAD bodies and joints define the physical assembly. In MKS, drag a motion source onto a joint, edit it, confirm its connection, attach a sensor and connect its measurement output to Scope. Start simulation to calculate and play the 3D movement. Changed physical inputs require a new calculation. Display interpolation does not manufacture new force results.
 
-**Video speichern** in the MKS ribbon exports a current simulation as AVI/MJPEG in the background. Default: 640 × 360 pixels, 30 fps, fixed fitted camera. The export interpolates joint-relative poses and keeps the source result unchanged. It refuses existing destinations; choose a new filename. Limits: 601 frames, 150 million total pixels, 128 MiB. PNG and animated GIF remain separate. MP4 and audio are not included.
+**Video speichern** in the MKS ribbon exports a current simulation as AVI/MJPEG in the background. Default: 640 × 360 pixels, 30 fps, fixed fitted camera. The export interpolates joint-relative poses and keeps the source result unchanged. It refuses existing destinations; choose a new filename. Limits: 601 frames, 150 million total pixels, 128 MiB. Detailed assembly previews and exports share a bounded budget of 250,000 triangles and 500,000 total vertices, including flexible surfaces. PNG and animated GIF remain separate. MP4 and audio are not included.
 
 Supported dynamics include bounded open rigid and mixed rigid/FFRF trees with revolute/prismatic joints. Component FEM supports linear-elastic TET4/TET10 volume meshes, RBE2 transfer surfaces and Craig-Bampton reduction. Current assembly modal histories can be displayed in the individual component view. Existing ROM settings can be reopened from a block, preserving imported mesh data and surface order. Forces and moments can be edited in the FEM form.
 

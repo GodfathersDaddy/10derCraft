@@ -2044,3 +2044,36 @@ Zwei Läufe erreichten das alte lokale Prozesszeitlimit von 30 s. Eine Begrenzun
 Wichtige Auslegungsrückführung. A2 erreicht etwa 403,65 Nm RMS im Bewegungsfenster und 875,48 Nm Mz-Spitze. Mit i=120, eta=0,75 und Faktor 1,5 folgen vorläufig 6,73 Nm RMS bzw. 14,59 Nm Spitze am Motor. Der eingebaute 2-kW-Montagekandidat mit 6,37 Nm Nennmoment muss neu bewertet werden. Reale Antriebswahl folgt erst nach Anfangsgleichgewicht, numerischer Konvergenz und Betriebszyklusbetrachtung. Die elastischen Koordinaten starten derzeit bei null unter Eigengewicht, wodurch Einschwingen entsteht. Kabel-/Verkleidungskörper sind an der Rohrwurzel starr idealisiert. Lager-, Getriebe-, Schraubennachgiebigkeit und Greifkontakt bleiben offen.
 
 Native UI-Aufnahmen zeigen ROM-Blöcke, gemeinsame Achsmomente, bearbeitbare Anbauteil-Flächenzuordnung und dynamische Bauteilverformung. FEM-Darstellung im Screenshot 300-fach überhöht. Native AVI-Ausgabe mit 241 Bildern bei 30 FPS gespeichert. Für Diss-Grafiken eignen sich Körperzerlegungsdiagramm, Flächen-Kraftpfad, Voll-/Reduktions-DOF-Tabelle, Momenten-/Verformungszeitreihen und dokumentierte Fehler-/Lösungsfolge. Breite Tests bleiben auf Benutzerwunsch pausiert. Der vollständige Arm besitzt weiterhin keine Fertigungsfreigabe.
+
+
+## 06.11.2026 – Statischer elastischer Anfangszustand im nativen Roboterworkflow
+
+Untersuchungsfrage. Wie verändert ein unbelasteter gegenüber einem unter Eigengewicht äquilibrierten elastischen Anfangszustand die Gelenklasten bei identischer Bewegung?
+
+Implementierung. Option im normalen MKS-Reiter und erweiterten Einstellungsfenster, gespeichert als initial_equilibrium. Acht statische Lastschritte bei gehaltenen sechs Gelenkkoordinaten, Übergabe der elastischen Koordinaten an die Dynamik, verschwindende Anfangsgeschwindigkeit. Gemeinsame analytische Bewegungs- und Geschwindigkeitsfunktionen für drei lokale Solverpfade. Alte Projekte behalten den bisherigen Standard.
+
+Normale native Berechnung. Zwei Hohlprofil-ROMs, 8 s, 4.000 Schritte, 501 Ausgaben. A2-Mz-Spitze 875,481 → 597,267 Nm und RMS 403,646 → 373,040 Nm. Oberarm-Anfangsverformung 0,08147 mm, dynamisches Maximum 0,13936 mm. Unterarm 0,04787 beziehungsweise 0,07588 mm. Die Formulierung und Datengrundlage stehen in docs/10dercraft/ROBOTER_STATISCHE_VORSPANNUNG.md und evidence/robot-static-preload.
+
+Rechenaufwand. Native Solverrechnung 71,18 s, Integration 68,84 s, statische Initialisierung 0,067 s. Integrationsaufwand dominiert in diesem Lauf. Keine isolierte Beschleunigungsaussage aus Laufzeiten verschiedener Programmausführungen.
+
+Konvention. Rohe statische und dynamische Exudyn-Reaktionen besitzen im beobachteten Übergang entgegengesetzte Vorzeichen. Phasen getrennt gespeichert. Keine unbestätigte Vorzeichenkorrektur. Betrags-/RMS-Vergleich ausschließlich zwischen dynamischen Reihen.
+
+Verifikation. Build erfolgreich, native Berechnung erfolgreich, Ergebnis nach erneutem Öffnen aktuell, sichtbare neue Option und MKS-Diagramme aufgenommen, nativer AVI-Export mit 241 Bildern bei 30 FPS. Statische Listen- und Diff-Prüfung erfolgreich. Breite Tests und CI weiterhin vom Benutzer pausiert.
+
+Weiterer mechanischer Modellstand. Drei parametrische Schultergabel-Frästeile werden als eigene native Variante aufgebaut. Ergebnisse des unveränderten Vergleichsmodells gelten weiterhin nur für dessen Geometrie. Gesamtfertigungsauslegung, Konvergenzuntersuchungen und experimentelle Validierung bleiben ausständig.
+
+
+## 06.11.2026 – Native dreiteilige Schultergabel mit Normteilen und erneuter ROM-MKS
+
+Drei benannte parametrische Aluminiumplatten ersetzen die überlagernden früheren Schulterstützen. Sechs M10×50 mit Scheiben verbinden die Grundplatte, acht M8×40 mit Scheiben die Seitenplatten und sechs M8×35 mit Scheiben den Motoradapter. Alle 40 Normteile besitzen explizite native Montagegelenke und Stahlzuweisung. Masse der 43 Körper umfassenden Unterbaugruppe geometrisch 12,000 kg bei vorläufig generischem Aluminium. Der A2-Getriebe-/Lageraufbau ist weiterhin ein offener eigener Konstruktionsschritt.
+
+Native Prüfgrenze. Geschlossene Plattenkörper, Timeline ohne Fehler/Warnungen und begrenzte Abstandsprüfung ohne Überschneidung zu vier ausgewählten A2-Körpern. Kein vollständiger Kollisions- oder Fertigungsnachweis. Ein zunächst schwebender leerer Strukturcontainer wurde über ein natives starres Gelenk an Achse 1 gebunden. Danach enthält die CAD-abgeleitete MKS keine schwebenden Blöcke.
+
+Erneute FEM-ROM-MKS-Projektrechnung. 8 s, 4.000 Schritte, 501 Ausgaben, zwei reduzierte Rohrprofile, statischer Start. Oberarm 0,13936 mm und Unterarm 0,07588 mm maximale elastische Knotenverschiebung. A2-Mz-Spitze 597,266 Nm, RMS 373,040 Nm. Maximale Gelenkpositionsabweichung 3,48e-9 m. Normale Solverrechnung 78,44 s, davon Integration 75,41 s. Das gespeicherte Ergebnis wird nach erneutem Öffnen als aktuell erkannt. Belege und Dateien stehen im Bericht ROBOTER_SCHULTERGABEL.md und evidence/robot-shoulder-yoke.
+
+Weitere Implementierungsbefunde. Automatisches Schraubensetzen auf bereits platzierten Scheiben benötigt unveränderte Weltpunkte und die tatsächliche zylindrische Platzierung. Die frühere doppelte Koordinatenumrechnung wurde lokalisiert. Zusätzlich überschreitet die detaillierte Baugruppe die bisherige 100.000-Dreiecke-Grenze der MKS-Darstellung. Diese beiden normalen Bedienpfade werden im gleichen Entwicklungsschritt angepasst. Breite Tests und CI bleiben pausiert.
+
+
+Abschluss dieses Entwicklungsschritts. Die doppelte Koordinatenumrechnung beim automatischen Normteilsetzen ist korrigiert. Ein normales M10-Einsetzen auf einer bereits platzierten Scheibe gelingt mit gemessener Spitze z = 215 mm und Kopfoberseite z = 275 mm. Die MKS-Vorschau und Ergebnisexporte verarbeiten jetzt begrenzt 250.000 Dreiecke und insgesamt 500.000 Vertices einschließlich flexibler Flächen. Der detaillierte Roboter wurde damit im MKS abgespielt und als natives AVI mit 241 Bildern bei 30 FPS exportiert. CAD-, MKS- und dynamische FEM-Ansichten wurden aufgenommen. Die FEM-Darstellung verwendet 300-fache Überhöhung. Die Source-Rechnung bleibt maßstäblich unverändert.
+
+Eine Syntaxprüfung fand einen eingerückten Importfehler im Starrkörper-Worker nach der gemeinsamen Bewegungsfunktion-Umstellung. Der Import ist korrigiert. Alle vier Python-Dateien lassen sich syntaktisch einlesen. Das vorhandene native Pendel wurde anschließend sowohl frei als auch mit vorgegebener Quintik-Bewegung über den normalen Starrkörperpfad berechnet. Build und statische Listenprüfung sind erfolgreich. Der ergänzte Regressionsfall für Normteilsitze wurde nicht automatisiert ausgeführt. Breite Tests und CI bleiben pausiert.

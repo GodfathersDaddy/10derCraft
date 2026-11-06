@@ -41,6 +41,11 @@ struct Draft {
 
 fn comparable_settings(settings: &Value, diagram: &crate::mks_diagram_ui::Diagram) -> Value {
     let mut value = settings.clone();
+    if value["initial_equilibrium"] == false
+        && let Some(settings) = value.as_object_mut()
+    {
+        settings.remove("initial_equilibrium");
+    }
     if let Some(drivers) = value["drivers"].as_array_mut() {
         drivers.retain(|d| !d["joint"].as_u64().is_some_and(|id| diagram.managed(id)));
         drivers.sort_by_key(|d| d["joint"].as_u64().unwrap_or(0));
@@ -169,6 +174,18 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui, model: &Value) {
                         }
                         ui.small(format!("{} {}", draft.settings["samples"], app.tr("ui.mks_quality.samples")));
                         ui.label(format!("g = {gravity} m/s²"));
+                        let mut equilibrium = draft.settings["initial_equilibrium"] == true;
+                        let check = ui
+                            .checkbox(&mut equilibrium, app.tr("ui.mks_initial.equilibrium"))
+                            .on_hover_text(app.tr("ui.mks_initial.equilibrium_help"));
+                        scenario::publish_handle("mks:initial:equilibrium", check.rect.center());
+                        if check.changed() {
+                            if equilibrium {
+                                draft.settings["initial_equilibrium"] = json!(true);
+                            } else if let Some(settings) = draft.settings.as_object_mut() {
+                                settings.remove("initial_equilibrium");
+                            }
+                        }
                         let arrange = crate::toolbar::engineering_action(ui, "fit", app.tr("ui.workspace.arrange"), false);
                         scenario::publish_handle("mks:graph:arrange", arrange.rect.center());
                         if arrange.clicked() {

@@ -23,7 +23,7 @@ struct CommittedRun {
 const COMPUTED_RUN: TypedContract<ComputedRun> = TypedContract::new();
 pub static COMMANDS:&[CommandSpec]=&[
     CommandSpec::new("mks.result.frame","Read Dynamics Frame",frame).icon("graph").noundo().params("sample: saved result sample index; simulated world transforms for CAD members/bodies and ports without changing CAD; refuses historical results"),
-    CommandSpec::new("mks.job.create","Prepare CAD Dynamics Job",create).icon("new").params("duration_s?:2, steps?:1000, samples?:21, gravity_m_s2?:[0,0,-9.81], allow_assumed_density?:false, port_loads?:[{port,force_n?:[x,y,z],moment_nm?:[x,y,z],pressure_mpa?:number}], drivers?:[{joint:id,displacement:angle/length expression,ramp_s:number,profile?:cosine|quintic|sine,frequency_hz?:1}]; relative motion from current pose; open rigid revolute/slider tree only; measured joint coordinates and velocities in SI"),
+    CommandSpec::new("mks.job.create","Prepare CAD Dynamics Job",create).icon("new").params("duration_s?:2, steps?:1000, samples?:21, gravity_m_s2?:[0,0,-9.81], allow_assumed_density?:false, initial_equilibrium?:false (flexible ROM and prescribed motion on all joints), port_loads?:[{port,force_n?:[x,y,z],moment_nm?:[x,y,z],pressure_mpa?:number}], drivers?:[{joint:id,displacement:angle/length expression,ramp_s:number,profile?:cosine|quintic|sine,frequency_hz?:1}]; relative motion from current pose; open rigid revolute/slider tree only; measured joint coordinates and velocities in SI"),
     CommandSpec::new("mks.job.run","Run Local CAD Dynamics",run).icon("drive").params("Same settings as mks.job.create; starts optional installed external Exudyn adapter, bounded timeout, saves input-bound result; no CAD motion or network server"),
     CommandSpec::new("mks.job.accept","Import CAD Dynamics Result",accept).icon("update").params("result: assembly_worker output; exact current prepared job and CAD source required; no CAD changes"),
     CommandSpec::new("mks.job.state","Inspect CAD Dynamics Result",state).icon("graph").noundo().params("Persistent job and compact trajectories, with validity against current CAD, material, parameters and pending poses"),
@@ -40,6 +40,8 @@ struct Settings {
     samples: u32,
     gravity_m_s2: [f64; 3],
     allow_assumed_density: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    initial_equilibrium: bool,
     port_loads: Vec<Load>,
     drivers: Vec<Drive>,
 }
@@ -51,6 +53,7 @@ impl Default for Settings {
             samples: 21,
             gravity_m_s2: [0., 0., -9.81],
             allow_assumed_density: false,
+            initial_equilibrium: false,
             port_loads: Vec::new(),
             drivers: Vec::new(),
         }
@@ -292,6 +295,9 @@ fn build(s: &mut Session, p: &Value) -> Result<Value> {
             json!({"joint":drive.joint,"amplitude_si":amplitude,"ramp_s":drive.ramp_s,"profile":drive.profile,"frequency_hz":drive.frequency_hz}),
         );
     }
+    if settings.initial_equilibrium && (super::fem_rom::bindings(s).is_empty() || drivers.len() != joints.len()) {
+        return Err(error("static initial equilibrium requires an active flexible ROM and prescribed motion for every moving joint"));
+    }
     // No stop/contact law: bounded joints are admitted only when a prescribed,
     // monotone ramp stays wholly inside their native travel range.
     for j in array(&graph["joints"]) {
@@ -349,6 +355,13 @@ fn validate(job: &Value, result: &Value) -> Result<Value> {
     if result["schema"] != "solidcraft.assembly-result/1" || result["status"] != "success" || result.get("job") != Some(job) {
         return Err(error("solver result does not match the exact prepared job"));
     }
+    if job["settings"]["initial_equilibrium"] == true
+        && (result["initialization"]["method"] != "static_equilibrium"
+            || result["initialization"]["static_converged"] != true
+            || result["initialization"]["held_joints"].as_u64() != Some(array(&job["model"]["joints"]).len() as u64))
+    {
+        return Err(error("requested static initial equilibrium was not confirmed by the solver"));
+    }
     let times = array(&result["times_s"]);
     let n = job["settings"]["samples"].as_u64().unwrap_or(0) as usize;
     let end = job["settings"]["duration_s"].as_f64().unwrap_or(0.);
@@ -361,6 +374,20 @@ fn validate(job: &Value, result: &Value) -> Result<Value> {
         array(v).len() == n
             && array(v).iter().all(|r| array(r).len() == cols && array(r).iter().all(|x| x.as_f64().is_some_and(|v| v.is_finite() && v.abs() < 1e12)))
     };
+    if job["settings"]["initial_equilibrium"] == true {
+        for key in ["joint_forces_local_n", "joint_torques_local_nm"] {
+            let reactions = result["initialization"][key].as_object().ok_or_else(|| error("static initial reactions missing"))?;
+            if reactions.len() != array(&job["model"]["joints"]).len() {
+                return Err(error("incomplete static initial reactions"));
+            }
+            for joint in array(&job["model"]["joints"]) {
+                let value = vector(reactions.get(&joint["id"].to_string()).ok_or_else(|| error("static joint reaction missing"))?)?;
+                if !value.is_finite() {
+                    return Err(error("non-finite static initial reaction"));
+                }
+            }
+        }
+    }
     let trajectories = result["trajectories"].as_object().ok_or_else(|| error("trajectories required"))?;
     if trajectories.len() != array(&job["model"]["bodies"]).len() || !finite_rows(&result["energy_j"], 3) {
         return Err(error("incomplete energy/trajectory output"));

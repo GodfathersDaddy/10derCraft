@@ -1,0 +1,190 @@
+{
+  "scope": "Normal native model calculation. Broad automated tests paused.",
+  "initialization": {
+    "absolute_tolerance": 1e-10,
+    "held_joints": 6,
+    "joint_forces_local_n": {
+      "1": [
+        0.0,
+        0.0,
+        1183.4875105407923
+      ],
+      "2": [
+        -833.6459040183357,
+        0.0,
+        0.0
+      ],
+      "3": [
+        -468.77147287502163,
+        0.1025508125339585,
+        8.309160590927484e-05
+      ],
+      "4": [
+        246.08870845327985,
+        -0.00029329658353067627,
+        29.439850729475637
+      ],
+      "5": [
+        -204.06131795873898,
+        0.07422278187400867,
+        0.00024148510014919425
+      ],
+      "6": [
+        148.96363230928287,
+        -0.00017628278610877363,
+        -0.05418221982809867
+      ]
+    },
+    "joint_torques_local_nm": {
+      "1": [
+        -345.935427974589,
+        10.483456241074922,
+        6.164733744480458e-12
+      ],
+      "2": [
+        6.148059308718613e-12,
+        -5.26541224694378,
+        345.93568319603486
+      ],
+      "3": [
+        1.1204952305058563e-05,
+        -0.20684050996517905,
+        192.0652643486934
+      ],
+      "4": [
+        0.06933465783186166,
+        -51.838723258560556,
+        0.5790543057210821
+      ],
+      "5": [
+        0.00017420880455086237,
+        -0.5831875851746164,
+        32.03746704799557
+      ],
+      "6": [
+        2.3456817502329364e-05,
+        -19.821744828938314,
+        4.245465322732212e-07
+      ]
+    },
+    "load_steps": 8,
+    "method": "static_equilibrium",
+    "relative_tolerance": 1e-08,
+    "static_converged": true
+  },
+  "settings": {
+    "allow_assumed_density": false,
+    "drivers": [
+      {
+        "displacement": "ref_Hub_A1",
+        "frequency_hz": 0.25,
+        "joint": 1,
+        "profile": "sine",
+        "ramp_s": 0.8
+      },
+      {
+        "displacement": "ref_Hub_A2",
+        "frequency_hz": 0.25,
+        "joint": 2,
+        "profile": "sine",
+        "ramp_s": 0.8
+      },
+      {
+        "displacement": "ref_Hub_A3",
+        "frequency_hz": 0.375,
+        "joint": 3,
+        "profile": "sine",
+        "ramp_s": 0.8
+      },
+      {
+        "displacement": "ref_Hub_A4",
+        "frequency_hz": 0.5,
+        "joint": 4,
+        "profile": "sine",
+        "ramp_s": 0.8
+      },
+      {
+        "displacement": "ref_Hub_A5",
+        "frequency_hz": 0.25,
+        "joint": 5,
+        "profile": "sine",
+        "ramp_s": 0.8
+      },
+      {
+        "displacement": "ref_Hub_A6",
+        "frequency_hz": 0.5,
+        "joint": 6,
+        "profile": "sine",
+        "ramp_s": 0.8
+      }
+    ],
+    "duration_s": 8.0,
+    "gravity_m_s2": [
+      0.0,
+      0.0,
+      -9.81
+    ],
+    "port_loads": [],
+    "samples": 501,
+    "steps": 4000,
+    "recompute": true,
+    "initial_equilibrium": true
+  },
+  "provenance": {
+    "completed_utc": "2026-11-06T05:57:35.728391+00:00",
+    "job_sha256": "e86f23ae4a8808e715178ec108c8a2aefeb0ee216a71c160522ccc92838bee2a",
+    "motion_profiles_sha256": "1f5b38b92e0f88710f86ec9770a9bc64b8ebf80796275a67c78175d9c77c855f",
+    "worker_sha256": "60803df4047cfc50ebf9e75141d810131c0448ea7a25e375e8b14fe2e592cd37"
+  },
+  "timings_s": {
+    "integration": 68.83902949999901,
+    "model_setup": 1.64801860001171,
+    "postprocessing": 0.6312387999787461,
+    "static_initialization": 0.0666862000070978,
+    "total": 71.18497349999961
+  },
+  "comparison": {
+    "undeformed_start": {
+      "a2_peak_mz_nm": 875.4813459931644,
+      "a2_rms_mz_nm": 403.64607556698047,
+      "provenance": {
+        "completed_utc": "2026-11-06T06:13:54.780779+00:00",
+        "job_sha256": "09513771a99bb8581b97c1a1833127a0dc2ab836f8d65dcbb859443d9e049cfc",
+        "motion_profiles_sha256": "1f5b38b92e0f88710f86ec9770a9bc64b8ebf80796275a67c78175d9c77c855f",
+        "worker_sha256": "60803df4047cfc50ebf9e75141d810131c0448ea7a25e375e8b14fe2e592cd37"
+      }
+    },
+    "static_preload": {
+      "a2_peak_mz_nm": 597.2665300405455,
+      "a2_rms_mz_nm": 373.0398695288032,
+      "provenance": {
+        "completed_utc": "2026-11-06T05:57:35.728391+00:00",
+        "job_sha256": "e86f23ae4a8808e715178ec108c8a2aefeb0ee216a71c160522ccc92838bee2a",
+        "motion_profiles_sha256": "1f5b38b92e0f88710f86ec9770a9bc64b8ebf80796275a67c78175d9c77c855f",
+        "worker_sha256": "60803df4047cfc50ebf9e75141d810131c0448ea7a25e375e8b14fe2e592cd37"
+      }
+    }
+  },
+  "flexible_states": {
+    "block_3": {
+      "component_id": "ROM_Oberarm",
+      "initial_elastic_displacement_mm": 0.08146644370308101,
+      "max_elastic_displacement_mm": 0.13935993249341716
+    },
+    "block_4": {
+      "component_id": "ROM_Unterarm",
+      "initial_elastic_displacement_mm": 0.04787035803298843,
+      "max_elastic_displacement_mm": 0.0758809611031906
+    }
+  },
+  "reaction_convention": "Static initialization and dynamic traces store raw Exudyn local reactions separately. In this run the static and first dynamic reaction vectors have opposite signs. Static vectors are not concatenated into the dynamic traces. Initial dynamic force sample remains marked invalid.",
+  "preliminary_motor_estimate": {
+    "assumed_ratio": 120,
+    "assumed_efficiency": 0.75,
+    "assumed_margin": 1.5,
+    "rated_catalogue_torque_nm": 6.37,
+    "required_rms_nm": 6.217331158813386,
+    "required_peak_nm": 9.954442167342425,
+    "scope": "Preliminary assumed gearbox. No thermal, gearbox, bearing or fatigue qualification."
+  }
+}

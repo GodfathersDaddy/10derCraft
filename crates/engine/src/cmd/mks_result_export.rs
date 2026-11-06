@@ -100,6 +100,7 @@ pub fn assembly_result_scene(s: &mut Session, sample: usize, palette: Palette) -
     let mut out = Scene { background: Some(palette.background), ..Scene::default() };
     let mut bounds = Aabb3::EMPTY;
     let mut count = 0;
+    let mut vertex_count = 0;
     for placed in frame["bodies"].as_array().into_iter().flatten() {
         let body = model
             .bodies
@@ -109,8 +110,9 @@ pub fn assembly_result_scene(s: &mut Session, sample: usize, palette: Palette) -
         let world: Mat = serde_json::from_value(placed["world"].clone()).map_err(|e| error(e.to_string()))?;
         let source = body.mesh();
         count += source.triangles.len();
-        if count > 100_000 || source.positions.len() > 500_000 {
-            return Err(error("result preview limited to 100000 triangles / 500000 body vertices"));
+        vertex_count += source.positions.len();
+        if count > super::mks_replay::MAX_PREVIEW_TRIANGLES || vertex_count > super::mks_replay::MAX_PREVIEW_VERTICES {
+            return Err(error("result preview limited to 250000 triangles / 500000 total vertices"));
         }
         let mut mesh = (*source).clone();
         for p in &mut mesh.positions {

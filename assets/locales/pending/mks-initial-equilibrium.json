@@ -1,0 +1,10 @@
+{
+  "de": {
+    "ui.mks_initial.equilibrium": "Statisch vorspannen",
+    "ui.mks_initial.equilibrium_help": "Eigengewicht und konstante Portlasten zuerst bei den Gelenkstellungen des CAD-Starts ins Gleichgewicht bringen. Für flexible Modelle mit Bewegungsquellen an allen Gelenken. Anschließend mit verschwindender Anfangsgeschwindigkeit starten."
+  },
+  "en": {
+    "ui.mks_initial.equilibrium": "Static preload",
+    "ui.mks_initial.equilibrium_help": "First equilibrate gravity and constant port loads with all joints held at the CAD starting coordinates. Requires a flexible model and motion sources on every joint. Then start from rest."
+  }
+}

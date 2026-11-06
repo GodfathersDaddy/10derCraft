@@ -1,5 +1,15 @@
 [
   {
+    "path": "examples/projects/Roboter-8kg-Schultergabel-ROM-MKS.solidcraft",
+    "sha256": "b8fc30aba10f25b5feb2dcc13250e98e1a66feb4c1bfb652eeba9c0643b5c187",
+    "bytes": 4031906
+  },
+  {
+    "path": "examples/projects/Roboter-8kg-Statisch-vorgespannt.solidcraft",
+    "sha256": "2fcb06bb23cb0c52bff4102805a81abeb9d01f68b3fdfd544ab258367a4acd12",
+    "bytes": 3441886
+  },
+  {
     "path": "examples/projects/Roboter-8kg-Zwei-ROM.solidcraft",
     "sha256": "1101823ca1a95664194ddc6392a39197feb08c7148afa310b529cde0793c0142",
     "bytes": 3443790

@@ -108,6 +108,9 @@ fn poses(value: &Value, count: usize) -> Result<Vec<Pose>> {
         })
         .collect()
 }
+pub(super) const MAX_PREVIEW_TRIANGLES: usize = 250_000;
+pub(super) const MAX_PREVIEW_VERTICES: usize = 500_000;
+
 pub fn prepare(s: &mut Session) -> Result<AssemblyReplay> {
     let state = s.execute("mks.job.state", &json!({}))?;
     if state["result_current"] != true {
@@ -129,7 +132,8 @@ pub fn prepare(s: &mut Session) -> Result<AssemblyReplay> {
         links: Vec::new(),
         bounds: Aabb3::EMPTY,
     };
-    let mut triangles = 0;
+    let mut triangle_count = 0;
+    let mut vertex_count = 0;
     for (index, block) in graph["blocks"].as_array().into_iter().flatten().enumerate() {
         let mut item = Block { com: Vec3::ZERO, poses: Vec::new() };
         if block["grounded"] != true {
@@ -177,6 +181,11 @@ pub fn prepare(s: &mut Session) -> Result<AssemblyReplay> {
             {
                 return Err(error("invalid flexible replay matrices"));
             }
+            triangle_count += triangles.len();
+            vertex_count += positions.len();
+            if triangle_count > MAX_PREVIEW_TRIANGLES || vertex_count > MAX_PREVIEW_VERTICES {
+                return Err(error("replay geometry exceeds 250000 triangles / 500000 total vertices"));
+            }
             let mesh = Mesh { positions, triangles, ..Default::default() };
             let mut attachments = std::collections::BTreeMap::new();
             for (port, state) in elastic["attachment_states"].as_object().into_iter().flatten() {
@@ -219,9 +228,10 @@ pub fn prepare(s: &mut Session) -> Result<AssemblyReplay> {
                     })
                     .ok_or_else(|| error("CAD source missing"))?;
                 let mesh = body.mesh();
-                triangles += mesh.triangles.len();
-                if triangles > 100_000 || mesh.positions.len() > 500_000 {
-                    return Err(error("replay geometry exceeds preview limit"));
+                triangle_count += mesh.triangles.len();
+                vertex_count += mesh.positions.len();
+                if triangle_count > MAX_PREVIEW_TRIANGLES || vertex_count > MAX_PREVIEW_VERTICES {
+                    return Err(error("replay geometry exceeds 250000 triangles / 500000 total vertices"));
                 }
                 let color = s
                     .doc

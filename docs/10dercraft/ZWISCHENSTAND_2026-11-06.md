@@ -16,3 +16,8 @@ Zwei Hohlprofil-ROMs mit je 3.888 vollen und zwölf reduzierten elastischen Frei
 Zwei vorangegangene Versuche wurden durch das bisherige 30-Sekunden-Prozesslimit beendet. Flexible Rechnungen besitzen jetzt ein begrenztes 180-Sekunden-Zeitfenster. Rechenfäden der Zahlenbibliotheken sind im Kindprozess standardmäßig auf einen begrenzt. Eine allgemeine Beschleunigung ist daraus noch nicht abgeleitet. Die vollständige Rechnung wurde anschließend erfolgreich über mks.job.run ausgeführt.
 
 Die native Ergebniswiedergabe, gemeinsame Mz-Diagramme und die dynamische Bauteilansicht mit Netz wurden in isolierten OpenGL-Fenstern aufgenommen. Ein nativer AVI-Export mit 241 Bildern bei 30 FPS ist gespeichert. Der FEM-Screenshot verwendet einen 300-fachen Darstellungsmaßstab. Der neue Quellstand ist gebaut und die statische Listenprüfung ist bestanden. Breite Testreihen und CI bleiben pausiert. Tragende Achsanschlüsse, vollständige Motor-/Getriebe-/Lagerauslegung und Fertigungsfreigabe stehen weiterhin aus.
+
+
+## Optionaler statischer ROM-Start
+
+Ein weiterer nativer Lauf ergänzt den wählbaren statischen Anfangszustand. Der MKS-Reiter enthält dafür die Option Statisch vorspannen. Eigengewicht und konstante Anschlusslasten werden zunächst bei gehaltenen Gelenken äquilibriert. Das neue Beispiel Roboter-8kg-Statisch-vorgespannt.solidcraft enthält das aktuelle gespeicherte Ergebnis. Vergleich und Reaktionskonvention stehen in ROBOTER_STATISCHE_VORSPANNUNG.md. Die 8-s-Bewegung ergibt am unveränderten Vergleichsmodell A2-Mz-Spitze 597,267 Nm und RMS 373,040 Nm. Die vorherigen Werte beziehen sich weiterhin auf den unverformten Start.

@@ -8,6 +8,7 @@ struct Draft {
     samples: u32,
     gravity: [f64; 3],
     assumed: bool,
+    initial_equilibrium: bool,
     use_load: bool,
     port: String,
     force: [f64; 3],
@@ -31,6 +32,7 @@ impl Default for Draft {
             samples: 21,
             gravity: [0., 0., -9.81],
             assumed: false,
+            initial_equilibrium: false,
             use_load: false,
             port: String::new(),
             force: [0., 0., 0.],
@@ -71,6 +73,7 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui, model: &Value) {
             d.steps = stored["steps"].as_u64().and_then(|v| u32::try_from(v).ok()).unwrap_or(d.steps);
             d.samples = stored["samples"].as_u64().and_then(|v| u32::try_from(v).ok()).unwrap_or(d.samples);
             d.assumed = stored["allow_assumed_density"].as_bool().unwrap_or(false);
+            d.initial_equilibrium = stored["initial_equilibrium"] == true;
             for (i, g) in d.gravity.iter_mut().enumerate() {
                 *g = stored["gravity_m_s2"].get(i).and_then(Value::as_f64).unwrap_or(*g);
             }
@@ -109,6 +112,7 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui, model: &Value) {
         ui.horizontal(|ui|{ui.label("Dauer [s]");ui.add(egui::DragValue::new(&mut draft.duration).speed(0.1));ui.label("Schritte");ui.add(egui::DragValue::new(&mut draft.steps));ui.label("Ausgabepunkte");ui.add(egui::DragValue::new(&mut draft.samples));});
         ui.horizontal(|ui|{ui.label("Gravitation Welt [m/s²]");for v in &mut draft.gravity{ui.add(egui::DragValue::new(v).speed(0.1));}});
         ui.checkbox(&mut draft.assumed,"Angenommene CAD-Standarddichte ausdrücklich zulassen");
+        ui.checkbox(&mut draft.initial_equilibrium,app.tr("ui.mks_initial.equilibrium")).on_hover_text(app.tr("ui.mks_initial.equilibrium_help"));
         let drive=ui.checkbox(&mut draft.use_driver,"Gelenkbewegung vorgeben: weiche Kosinusrampe, danach halten");
         scenario::publish_handle("mks:dynamics:driver:enable",drive.rect.center());
         if draft.use_driver{
@@ -131,7 +135,7 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui, model: &Value) {
         if r.clicked(){
             let loads=if draft.use_load{json!([{"port":draft.port,"force_n":draft.force,"moment_nm":draft.moment}])}else{json!([])};
             let drivers=if draft.use_driver{json!([{"joint":draft.driver_joint,"displacement":draft.driver_displacement,"ramp_s":draft.ramp}])}else{json!([])};
-            match app.run("mks.job.run",json!({"duration_s":draft.duration,"steps":draft.steps,"samples":draft.samples,"gravity_m_s2":draft.gravity,"allow_assumed_density":draft.assumed,"port_loads":loads,"drivers":drivers})){
+            match app.run("mks.job.run",json!({"duration_s":draft.duration,"steps":draft.steps,"samples":draft.samples,"gravity_m_s2":draft.gravity,"allow_assumed_density":draft.assumed,"initial_equilibrium":draft.initial_equilibrium,"port_loads":loads,"drivers":drivers})){
                 Ok(_)=>{draft.error.clear();draft.sample=0;draft.playing=false;},Err(e)=>draft.error=e,
             }
         }

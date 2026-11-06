@@ -1,0 +1,31 @@
+{
+  "bodies": 3,
+  "ms": 443.6794,
+  "near": [],
+  "nearest": {
+    "RB_Yoke_Baseplate": [
+      {
+        "body": "A2-Schulter",
+        "distance_mm": 8.000000000005116
+      }
+    ],
+    "RB_Yoke_Side_Neg": [
+      {
+        "body": "A2-Lagerschild",
+        "distance_mm": 14.317821063276291
+      }
+    ],
+    "RB_Yoke_Side_Pos": [
+      {
+        "body": "A2_Adapterplatte",
+        "distance_mm": 0.0
+      }
+    ]
+  },
+  "overlaps": [],
+  "pairs_checked": 2,
+  "pairs_pruned": 10,
+  "pairs_reused": 0,
+  "truncated": false,
+  "unchecked": []
+}

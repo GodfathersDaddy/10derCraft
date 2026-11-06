@@ -2,6 +2,18 @@
   "schema": "10dercraft.examples/1",
   "examples": [
     {
+      "id": "robot-shoulder-yoke-8kg",
+      "title": "Roboter 8 kg - Schultergabel und flexible MKS",
+      "path": "examples/projects/Roboter-8kg-Schultergabel-ROM-MKS.solidcraft",
+      "description": "Drei parametrische Schulterplatten, 40 native Normteile, zwei Rohr-ROMs und berechnete vorgespannte Sechsachsbewegung. Lager-/Getriebeauslegung offen."
+    },
+    {
+      "id": "robot-preloaded-8kg",
+      "title": "Roboter 8 kg - statisch vorgespannte ROMs",
+      "path": "examples/projects/Roboter-8kg-Statisch-vorgespannt.solidcraft",
+      "description": "Zwei flexible Rohr-ROMs mit statischem Eigengewichts-Start, sechs Bewegungsquellen und berechneten Gelenkmomenten. Vorläufige ideale Anschlussannahmen."
+    },
+    {
       "id": "robot-flexible-8kg",
       "title": "Roboter 8 kg - zwei flexible Rohr-ROMs",
       "path": "examples/projects/Roboter-8kg-Zwei-ROM.solidcraft",

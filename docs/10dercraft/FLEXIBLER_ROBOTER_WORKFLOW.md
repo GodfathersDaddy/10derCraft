@@ -59,7 +59,7 @@ Die vorhandenen Grenzen von acht beweglichen CAD-Blöcken und 1.001 Ausgabepunkt
 
 - Das Beispiel verwendet lineare isotrope Elastizität, kleine elastische Verformungen und starre RBE2-Anschlussflächen.
 - Das Ausgangsmodell enthält weiterhin vereinfachte Antriebsgehäuse, Verkleidungs- und Kabelkörper. Sie sind in diesem Beispiel am jeweiligen Rohrwurzelanschluss starr angeordnet. Ihre geometrische Darstellung und Steifigkeitswirkung benötigen eine mechanische Überarbeitung.
-- Die Bewegung beginnt mit verschwindenden elastischen Koordinaten und Geschwindigkeiten. Eigengewicht regt deshalb Einschwingvorgänge an. Ein statisch vorgespannter Startzustand ist noch offen.
+- Ohne die optionale statische Vorspannung beginnt die Bewegung mit verschwindenden elastischen Koordinaten und Geschwindigkeiten. Eigengewicht regt deshalb Einschwingvorgänge an. Die wählbare Option "Statisch vorspannen" ergänzt einen statischen Startzustand. Die Vergleichsrechnung ist im Bericht ROBOTER_STATISCHE_VORSPANNUNG.md dokumentiert.
 - Schrauben-, Lager- und Getriebenachgiebigkeit, Reibung, Greifkontakt und Materialplastizität sind separat zu entwickeln.
 - Die Panasonic-Motordarstellung bildet eine katalogbasierte Montagehülle mit kalibrierter Masse ab. Andere Antriebe und die vollständige Getriebe- und Lagerauswahl bleiben in Ausarbeitung.
 - Tragende Achsanschlüsse, Passungen, Kollisionsfreiheit, Ermüdung, Sicherheitsfunktionen und vollständige Fertigungszeichnungen sind noch offen. Die gesamte Roboterbaugruppe besitzt keine Fertigungsfreigabe.
@@ -71,3 +71,7 @@ Die Oberflächenmarker und ihre Starrkörperrotation folgen der dokumentierten E
 Die masselosen Kopplungsrahmen nutzen den dokumentierten Starrkörper mit nichtnegativer Masse und sechs gebundenen Gelenkkoordinaten. [ObjectRigidBody](https://exudyn.readthedocs.io/en/v1.13.6/docs/generated/items/ObjectRigidBody.html), [ObjectJointGeneric](https://exudyn.readthedocs.io/en/v1.13.6/docs/generated/items/ObjectJointGeneric.html)
 
 Katalogannahmen und die vorläufige Antriebsauslegung stehen im zugehörigen Bericht „MKS-Gelenkmomente und A2-Antrieb“.
+
+## Ergänzung vom 06.11.2026
+
+Der MKS-Reiter bietet den optionalen statisch vorgespannten Start. Eine explizite Bewegung muss dabei jedes bewegliche Gelenk halten. Neue Auswertungen und Grenzen stehen im Bericht ROBOTER_STATISCHE_VORSPANNUNG.md.

@@ -3,9 +3,11 @@ from contextlib import redirect_stdout
 from hashlib import sha256
 from pathlib import Path
 from datetime import datetime,timezone
+from time import perf_counter
 import json,sys,math
 import numpy as np
 import fem_worker as fe
+from motion_profiles import joint_motion, SOURCE_SHA256
 
 def same_part(part, owner):
     return all(part[key] == owner[key] for key in ['source', 'component', 'path'])
@@ -29,6 +31,7 @@ def aggregate_parts(parts):
     return float(mass), com, tensor
 
 def run(envelope):
+    started = perf_counter()
     import exudyn as exu
     from exudyn.FEM import FEMinterface,ObjectFFRFreducedOrderInterface
     from exudyn.utilities import RigidBodyInertia
@@ -38,6 +41,10 @@ def run(envelope):
     if job['backend']!='exudyn_ffrf_open_chain':raise ValueError('incorrect flexible backend')
     duration=float(settings['duration_s']);steps=settings['steps'];samples=settings['samples'];gravity=fe.finite(settings['gravity_m_s2'],(3,))
     if not(.001<=duration<=10 and isinstance(steps,int) and 10<=steps<=10000 and isinstance(samples,int) and 2<=samples<=1001 and steps%(samples-1)==0 and 1<=len(model['bodies'])<=8 and len(model['bodies'])*(samples-1)<=8000 and max(abs(gravity))<=100):raise ValueError('integration limits exceeded')
+    initial_equilibrium = settings.get('initial_equilibrium', False)
+    if not isinstance(initial_equilibrium, bool):
+        raise ValueError('initial_equilibrium must be boolean')
+    static_phase = False
     sc=exu.SystemContainer();mbs=sc.AddSystem();ground=mbs.AddObject(ObjectGround())
     ids={model['ground']:ground};initial={model['ground']:np.zeros(3)};sensors={};flex={};physical={}
     attachment_sensors = {}
@@ -136,20 +143,16 @@ def run(envelope):
             raise ValueError('ambiguous joint ROM interface')
         return marker(bid, pivot, matches[0] if matches else None)
     drivers={d['joint']:d for d in model.get('drivers',[])}
-    def motion(d,kind):
-        amplitude=float(d['amplitude_si']);ramp=float(d['ramp_s']);frequency=float(d.get('frequency_hz',1));profile=d.get('profile','cosine')
-        if not math.isfinite(amplitude) or not 0<ramp<=duration or profile not in ['cosine','quintic','sine'] or not .01<=frequency<=20:raise ValueError('invalid driver')
-        def offset(mbs,t,item,parameters):
-            p=min(max(t/ramp,0),1);smooth=p**3*(10+p*(-15+6*p));v=.5*(1-math.cos(math.pi*p)) if profile=='cosine' else smooth if profile=='quintic' else smooth*math.sin(2*math.pi*frequency*t)
-            result=[0.]*6;result[5 if kind=='revolute' else 2]=amplitude*v;return result
-        return offset
+    if initial_equilibrium and (len(drivers) != len(model['joints']) or any(j['id'] not in drivers for j in model['joints'])):
+        raise ValueError('static initial equilibrium needs prescribed motion on every joint')
     joints=[]
     moment_sensors={}
     for j in model['joints']:
         a,b=j['a'],j['b'];pivot=fe.finite(j['pivot_world_m'],(3,));rotation=fe.finite(j['rotation_world'],(3,3))
         if a not in ids or b not in ids or a==b or j['kind'] not in ['revolute','slider'] or not np.allclose(rotation.T@rotation,np.eye(3),atol=1e-8):raise ValueError('invalid joint')
         markers=[joint_marker(a,j['id'],pivot),joint_marker(b,j['id'],pivot)];drive=drivers.get(j['id']);axes=[1]*6 if drive else ([1,1,1,1,1,0] if j['kind']=='revolute' else [1,1,0,1,1,1])
-        obj=mbs.AddObject(GenericJoint(name=j['name'],markerNumbers=markers,rotationMarker0=rotation.tolist(),rotationMarker1=rotation.tolist(),constrainedAxes=axes,offsetUserFunction=motion(drive,j['kind']) if drive else 0))
+        offset, velocity = joint_motion(drive, j['kind'], duration, frozen=lambda:static_phase) if drive else (0, 0)
+        obj=mbs.AddObject(GenericJoint(name=j['name'],markerNumbers=markers,rotationMarker0=rotation.tolist(),rotationMarker1=rotation.tolist(),constrainedAxes=axes,offsetUserFunction=offset,offsetUserFunction_t=velocity))
         reaction=mbs.AddSensor(SensorObject(objectNumber=obj,outputVariableType=exu.OutputVariableType.ForceLocal,storeInternal=True,writeToFile=False))
         frames=[{name:mbs.AddSensor(SensorMarker(markerNumber=m,outputVariableType=ov,storeInternal=True,writeToFile=False)) for name,ov in ovs.items()} for m in markers]
         moment_sensors[str(j['id'])]=mbs.AddSensor(SensorObject(objectNumber=obj,outputVariableType=exu.OutputVariableType.TorqueLocal,storeInternal=True,writeToFile=False))
@@ -157,8 +160,36 @@ def run(envelope):
     for load in model['loads']:
         m=marker(load['block'],fe.finite(load['position_world_m'],(3,)),load['port'])
         mbs.AddLoad(LoadForceVector(markerNumber=m,loadVector=fe.finite(load['force_initial_world_n'],(3,)).tolist(),bodyFixed=True));mbs.AddLoad(LoadTorqueVector(markerNumber=m,loadVector=fe.finite(load['moment_initial_world_nm'],(3,)).tolist(),bodyFixed=True))
-    mbs.Assemble();options=exu.SimulationSettings();options.timeIntegration.endTime=duration;options.timeIntegration.numberOfSteps=steps;options.timeIntegration.verboseMode=0;options.timeIntegration.generalizedAlpha.spectralRadius=.8;options.solutionSettings.writeSolutionToFile=False;options.solutionSettings.sensorsWritePeriod=duration/(samples-1)
+    mbs.Assemble()
+    setup_finished = perf_counter()
+    initialization = dict(method='undeformed', static_converged=False, held_joints=0)
+    if initial_equilibrium:
+        static_options = exu.SimulationSettings()
+        static_options.solution.file.write = False
+        static_options.solution.sensors.active = False
+        static_options.staticSolver.verboseMode = 0
+        static_options.staticSolver.numberOfLoadSteps = 8
+        static_options.staticSolver.newton.relativeTolerance = 1e-8
+        static_options.staticSolver.newton.absoluteTolerance = 1e-10
+        static_phase = True
+        try:
+            converged = mbs.SolveStatic(static_options, updateInitialValues=True)
+            if not converged:
+                raise ValueError('static preload did not converge')
+            initialization = dict(
+                method='static_equilibrium', static_converged=True, held_joints=len(joints),
+                load_steps=8, relative_tolerance=1e-8, absolute_tolerance=1e-10,
+                joint_forces_local_n={str(j['id']):fe.finite(mbs.GetSensorValues(sensor), (3,)).tolist() for j,sensor,_ in joints},
+                joint_torques_local_nm={jid:fe.finite(mbs.GetSensorValues(sensor), (3,)).tolist() for jid,sensor in moment_sensors.items()})
+        finally:
+            static_phase = False
+        coordinates = mbs.systemData.GetODE2Coordinates(exu.ConfigurationType.Initial)
+        mbs.systemData.SetODE2Coordinates_t(np.zeros_like(coordinates), exu.ConfigurationType.Initial)
+        mbs.systemData.SetTime(0., exu.ConfigurationType.Initial)
+    static_finished = perf_counter()
+    options=exu.SimulationSettings();options.timeIntegration.endTime=duration;options.timeIntegration.numberOfSteps=steps;options.timeIntegration.verboseMode=0;options.timeIntegration.generalizedAlpha.spectralRadius=.8;options.solution.file.write=False;options.solution.sensors.writePeriod=duration/(samples-1)
     mbs.SolveDynamic(options,solverType=exu.DynamicSolverType.GeneralizedAlpha)
+    integration_finished = perf_counter()
     def data(sensor):
         a=mbs.GetSensorStoredData(sensor)
         if a.shape[0]!=samples or not np.isfinite(a).all() or not np.allclose(a[:,0], np.linspace(0, duration, samples), rtol=0, atol=1e-8):raise ValueError('incomplete/non-finite or misaligned sensor output')
@@ -169,6 +200,7 @@ def run(envelope):
         if bid in flex:
             f=flex[bid];q=a['modal'];qd=a['modal_velocity'];states[bid]=dict(component_id=f['component_id'],modal_coordinates=q.tolist(),reference_poses=np.column_stack([pos,a['rotation']]).tolist())
             states[bid]['max_elastic_displacement_mm'] = float(max(np.max(np.linalg.norm((f['basis'] @ row).reshape(-1,3), axis=1)) for row in q) * 1000)
+            states[bid]['initial_elastic_displacement_mm'] = float(np.max(np.linalg.norm((f['basis'] @ q[0]).reshape(-1,3), axis=1)) * 1000)
             trajectories[bid]=np.column_stack([pos+np.einsum('kij,j->ki',rotation,initial[bid]-f['origin']),a['rotation']]).tolist()
             for k in range(samples):
                 u=(f['basis']@q[k]).reshape(-1,3);ud=(f['basis']@qd[k]).reshape(-1,3);w=rotation[k].T@a['omega'][k];v=rotation[k].T@a['velocity'][k]+np.cross(w,f['local']+u)+ud
@@ -205,7 +237,31 @@ def run(envelope):
         coordinates[str(j['id'])]=values.tolist();reactions[str(j['id'])]=data(sensor).tolist()
     if max_pos>1e-5 or max_axis>1e-5:raise ValueError('deformed interface joint residual exceeds tolerance')
     energy[:,2]=energy[:,0]+energy[:,1]
-    return dict(schema='solidcraft.assembly-result/1',status='success',job=job,backend_version=exu.__version__,times_s=times.tolist(),trajectories=trajectories,flexible_states=states,energy_j=energy.tolist(),joint_forces_local_n=reactions,joint_torques_local_nm={joint_id:data(sensor).tolist() for joint_id,sensor in moment_sensors.items()},joint_coordinates_si=coordinates,numerics=dict(generalized_alpha_spectral_radius=.8,force_initial_sample_valid=False),summary=dict(max_position_constraint_m=max_pos,max_axis_alignment_error=max_axis,max_energy_change_j=float(max(abs(energy[:,2]-energy[0,2])))),provenance=dict(worker_sha256=sha256(Path(__file__).read_bytes()).hexdigest(),job_sha256=sha256(json.dumps(job,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest(),completed_utc=datetime.now(timezone.utc).isoformat()),assumptions=['Mixed rigid/FFRF open chain; stiffness-proportional damping calibrated to 1% at the lowest fixed-interface frequency.','Flexible joints and loads act through reduced CAD surface node sets. Explicit surface-to-joint mappings use ideal massless rigid-transform frames; these add no hardware mass or support flexibility.','Small elastic deformation, RBE2 rigid surfaces; no contact/plasticity. Zero initial elastic displacement/velocity; no static prestress initialization.','CAD attachments retain their mass and centroidal inertia, bonded rigidly to their explicitly selected surface. Their motion and energy are included separately. No bolt/contact compliance is inferred.', 'Energy includes full FE nodal kinetic energy, attachment rigid kinetic energy, elastic strain and gravitational potential; actuator/load work is not subtracted.'])
+    initial_note = ('Static gravity/port-load equilibrium at held CAD joint coordinates; zero initial velocity.'
+                    if initial_equilibrium else 'Zero initial elastic displacement/velocity; no static prestress initialization.')
+    return dict(
+        schema='solidcraft.assembly-result/1', status='success', job=job, backend_version=exu.__version__,
+        initialization=initialization, times_s=times.tolist(), trajectories=trajectories,
+        flexible_states=states, energy_j=energy.tolist(), joint_forces_local_n=reactions,
+        joint_torques_local_nm={joint_id:data(sensor).tolist() for joint_id,sensor in moment_sensors.items()},
+        joint_coordinates_si=coordinates,
+        numerics=dict(generalized_alpha_spectral_radius=.8, force_initial_sample_valid=False),
+        timings_s=dict(model_setup=setup_finished-started, static_initialization=static_finished-setup_finished,
+                       integration=integration_finished-static_finished, postprocessing=perf_counter()-integration_finished,
+                       total=perf_counter()-started),
+        summary=dict(max_position_constraint_m=max_pos, max_axis_alignment_error=max_axis,
+                     max_energy_change_j=float(max(abs(energy[:,2]-energy[0,2])))),
+        provenance=dict(motion_profiles_sha256=SOURCE_SHA256,
+                        worker_sha256=sha256(Path(__file__).read_bytes()).hexdigest(),
+                        job_sha256=sha256(json.dumps(job,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest(),
+                        completed_utc=datetime.now(timezone.utc).isoformat()),
+        assumptions=[
+            'Mixed rigid/FFRF open chain; stiffness-proportional damping calibrated to 1% at the lowest fixed-interface frequency.',
+            'Flexible joints and loads act through reduced CAD surface node sets. Explicit surface-to-joint mappings use ideal massless rigid-transform frames; these add no hardware mass or support flexibility.',
+            'Small elastic deformation, RBE2 rigid surfaces; no contact/plasticity.', initial_note,
+            'CAD attachments retain their mass and centroidal inertia, bonded rigidly to their explicitly selected surface. Their motion and energy are included separately. No bolt/contact compliance is inferred.',
+            'Energy includes full FE nodal kinetic energy, attachment rigid kinetic energy, elastic strain and gravitational potential; actuator/load work is not subtracted.'])
+
 
 if __name__=='__main__':
     try:

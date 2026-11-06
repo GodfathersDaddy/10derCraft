@@ -1,0 +1,116 @@
+{
+  "backend_version": "1.13.6",
+  "provenance": {
+    "completed_utc": "2026-11-06T06:27:06.255933+00:00",
+    "job_sha256": "798a842bc6943ebcfd7f274e1b61e82be2d378185467985372172f971bb51b79",
+    "motion_profiles_sha256": "1f5b38b92e0f88710f86ec9770a9bc64b8ebf80796275a67c78175d9c77c855f",
+    "worker_sha256": "60803df4047cfc50ebf9e75141d810131c0448ea7a25e375e8b14fe2e592cd37"
+  },
+  "timings_s": {
+    "integration": 75.411248599994,
+    "model_setup": 2.12125319999177,
+    "postprocessing": 0.8176001000101678,
+    "static_initialization": 0.08503640000708401,
+    "total": 78.43513850000454
+  },
+  "initialization": {
+    "absolute_tolerance": 1e-10,
+    "held_joints": 6,
+    "joint_forces_local_n": {
+      "1": [
+        0.0,
+        0.0,
+        1129.388718693624
+      ],
+      "2": [
+        -833.6459040183357,
+        0.0,
+        0.0
+      ],
+      "3": [
+        -468.77147287502163,
+        0.10255081253401041,
+        8.309160593191816e-05
+      ],
+      "4": [
+        246.08870845327985,
+        -0.00029329658354320526,
+        29.439850729475623
+      ],
+      "5": [
+        -204.06131795873898,
+        0.07422278187402064,
+        0.00024148510015950986
+      ],
+      "6": [
+        148.96363230928287,
+        -0.00017628278611630396,
+        -0.0541822198281074
+      ]
+    },
+    "joint_torques_local_nm": {
+      "1": [
+        -345.93542797459935,
+        11.672018297561454,
+        6.201902061006549e-12
+      ],
+      "2": [
+        6.186353863968296e-12,
+        -5.265412246942036,
+        345.9356831960381
+      ],
+      "3": [
+        1.1204952185639899e-05,
+        -0.2068405099651533,
+        192.06526434869406
+      ],
+      "4": [
+        0.06933465783189778,
+        -51.83872325856054,
+        0.5790543057210809
+      ],
+      "5": [
+        0.0001742088045280584,
+        -0.583187585174618,
+        32.03746704799556
+      ],
+      "6": [
+        2.345681751556187e-05,
+        -19.821744828938314,
+        4.245465325088056e-07
+      ]
+    },
+    "load_steps": 8,
+    "method": "static_equilibrium",
+    "relative_tolerance": 1e-08,
+    "static_converged": true
+  },
+  "summary": {
+    "max_axis_alignment_error": 2.2327007491191595e-08,
+    "max_energy_change_j": 304.39007838163354,
+    "max_position_constraint_m": 3.480374017851699e-09
+  },
+  "assumptions": [
+    "Mixed rigid/FFRF open chain; stiffness-proportional damping calibrated to 1% at the lowest fixed-interface frequency.",
+    "Flexible joints and loads act through reduced CAD surface node sets. Explicit surface-to-joint mappings use ideal massless rigid-transform frames; these add no hardware mass or support flexibility.",
+    "Small elastic deformation, RBE2 rigid surfaces; no contact/plasticity.",
+    "Static gravity/port-load equilibrium at held CAD joint coordinates; zero initial velocity.",
+    "CAD attachments retain their mass and centroidal inertia, bonded rigidly to their explicitly selected surface. Their motion and energy are included separately. No bolt/contact compliance is inferred.",
+    "Energy includes full FE nodal kinetic energy, attachment rigid kinetic energy, elastic strain and gravitational potential; actuator/load work is not subtracted."
+  ],
+  "scope": "Normal native calculation. Broad tests and CI paused. Mechanical development assembly.",
+  "result_current_after_native_save": true,
+  "floating_blocks": [],
+  "flexible_states": {
+    "block_3": {
+      "component_id": "ROM_Oberarm",
+      "initial_elastic_displacement_mm": 0.08146644370308184,
+      "max_elastic_displacement_mm": 0.13935993771038246
+    },
+    "block_4": {
+      "component_id": "ROM_Unterarm",
+      "initial_elastic_displacement_mm": 0.04787035803298857,
+      "max_elastic_displacement_mm": 0.0758809610397201
+    }
+  }
+}
