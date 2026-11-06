@@ -1,5 +1,10 @@
 [
   {
+    "path": "examples/projects/Roboter-8kg-Zwei-ROM.solidcraft",
+    "sha256": "1101823ca1a95664194ddc6392a39197feb08c7148afa310b529cde0793c0142",
+    "bytes": 3443790
+  },
+  {
     "path": "examples/projects/Roboter-DragDrop-Workflow.solidcraft",
     "sha256": "0f6bd46287a1708a6d2971788bc9b38e3b27d6f3e28d1268ba1ef7995dd88141",
     "bytes": 1027056

@@ -49,6 +49,13 @@ pub(super) fn execute(job: &Value) -> Result<Value> {
         return Err(bad("mks.job.run", "job exceeds bounded local solver input limit"));
     }
     let mut command = Command::new(python);
+    // Small reduced matrices lose time to oversubscribed BLAS thread pools.
+    // Keep explicit user settings, and scope the defaults to this child only.
+    for variable in ["OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"] {
+        if std::env::var_os(variable).is_none() {
+            command.env(variable, "1");
+        }
+    }
     command.arg("-B").arg(&worker).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     #[cfg(target_os = "windows")]
     {
@@ -80,10 +87,11 @@ pub(super) fn execute(job: &Value) -> Result<Value> {
         bytes
     });
     let start = Instant::now();
+    let timeout_s = if flexible { 180 } else { 30 };
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break Some(status),
-            Ok(None) if start.elapsed() < Duration::from_secs(30) => std::thread::sleep(Duration::from_millis(20)),
+            Ok(None) if start.elapsed() < Duration::from_secs(timeout_s) => std::thread::sleep(Duration::from_millis(20)),
             _ => {
                 let _ = child.kill();
                 let _ = child.wait();
@@ -107,7 +115,7 @@ pub(super) fn execute(job: &Value) -> Result<Value> {
         }
     }
     if status.is_none() {
-        return Err(bad("mks.job.run", "local solver timed out after 30 s"));
+        return Err(bad("mks.job.run", format!("local solver timed out after {timeout_s} s")));
     }
     if bytes.len() > 12 * 1024 * 1024 {
         return Err(bad("mks.job.run", "solver output exceeds 12 MiB"));

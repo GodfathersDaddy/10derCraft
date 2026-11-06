@@ -1,5 +1,9 @@
 # Roboterworkflow
 
+## Ergänzung vom 06.11.2026
+
+Der aktuelle Stand enthält jetzt zwei gekoppelte TET10/HCB-ROMs der hohlen Armprofile, eine explizite Zuordnung aller übrigen CAD-Anbauteile und deren getrennte Massenträgheit sowie Wiedergabe. Die achtsekündige Bewegung mit sechs Achsen ist im neuen Beispiel „Roboter 8 kg - zwei flexible Rohr-ROMs“ gespeichert. Einzelheiten, Zahlen und offene Fertigungsfragen stehen im [aktuellen Workflow](FLEXIBLER_ROBOTER_WORKFLOW.md). Die folgenden Abschnitte halten den vorherigen Stand vom 05.11.2026 fest.
+
 Stand 05.11.2026. Dieses Dokument unterscheidet nachgewiesene Funktionen und die noch erforderliche Integration des detaillierten Sechsachsarms.
 
 ## Gemeinsame Bedienung

@@ -173,6 +173,9 @@ fn build(s: &mut Session, p: &Value) -> Result<Value> {
             let mut body = json!({"id":id,"mass_kg":physical["mass_kg"],"com_world_m":physical["com_world_m"],"inertia_com_world_kg_m2":physical["inertia_com_world_kg_m2"]});
             if let Some(component) = super::fem_rom::binding(s, b)? {
                 body["flexible_component"] = json!(component);
+                body["parts"] = physical["bodies"].clone();
+                let record = s.doc.fem_models.as_ref().and_then(|v| v["models"].get(&component)).ok_or_else(|| error("ROM missing"))?;
+                body["rigid_attachments"] = record["rigid_attachments"].clone();
             }
             bodies.push(body);
         }
@@ -365,6 +368,7 @@ fn validate(job: &Value, result: &Value) -> Result<Value> {
     for b in array(&job["model"]["bodies"]) {
         let id = text(&b["id"])?;
         let poses = trajectories.get(id).ok_or_else(|| error("missing body trajectory"))?;
+        let mut pose_sets = vec![poses];
         if !finite_rows(poses, 12) {
             return Err(error("invalid body poses"));
         }
@@ -378,8 +382,21 @@ fn validate(job: &Value, result: &Value) -> Result<Value> {
             {
                 return Err(error("missing/invalid flexible component states"));
             }
+            let expected: BTreeSet<_> = array(&b["rigid_attachments"]).iter().filter_map(|a| a["interface"].as_str()).collect();
+            let states = f["attachment_states"].as_object();
+            if states.map_or(0, |a| a.len()) != expected.len() {
+                return Err(error("incomplete rigid attachment histories"));
+            }
+            for interface in expected {
+                let state = states.and_then(|a| a.get(interface)).ok_or_else(|| error("missing rigid attachment history"))?;
+                let center = vector(&state["com_world_m"])?;
+                if !center.is_finite() || !finite_rows(&state["poses"], 12) {
+                    return Err(error("invalid rigid attachment history"));
+                }
+                pose_sets.push(&state["poses"]);
+            }
         }
-        for row in array(poses) {
+        for row in pose_sets.into_iter().flat_map(array) {
             let at = |r: usize, c: usize| row.get(3 + r * 3 + c).and_then(Value::as_f64).unwrap_or(f64::NAN);
             let rows: Vec<Vec<f64>> = (0..3).map(|r| vec![at(r, 0), at(r, 1), at(r, 2), 0.]).collect();
             super::component::matrix::rigid(&json!(rows), 1e-5, "mks.simulation")?;

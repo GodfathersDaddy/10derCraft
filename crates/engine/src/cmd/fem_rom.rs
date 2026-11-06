@@ -44,6 +44,10 @@ struct Build {
     block: String,
     #[serde(default)]
     body: Option<String>,
+    #[serde(default)]
+    rigid_attachments: Vec<RigidAttachment>,
+    #[serde(default)]
+    joint_interfaces: Vec<JointInterface>,
     interfaces: Vec<String>,
     material: Material,
     #[serde(default = "divisions")]
@@ -56,6 +60,19 @@ struct Build {
     mesh: Option<ImportedMesh>,
     #[serde(default)]
     mesh_path: Option<String>,
+}
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct RigidAttachment {
+    body: String,
+    path: Vec<u64>,
+    interface: String,
+}
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct JointInterface {
+    joint: u64,
+    interface: String,
 }
 #[derive(Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -163,8 +180,17 @@ pub(super) fn bindings(s: &Session) -> Vec<Value> {
         .into_iter()
         .flatten()
         .filter(|(_, m)| m["enabled"] == true)
-        .map(|(id, m)| json!({"id":id,"block":m["block"],"signature":m["signature"]}))
+        .map(|(id, m)| json!({"id":id,"block":m["block"],"signature":m["signature"],"rigid_attachments":m["rigid_attachments"],"joint_interfaces":m["joint_interfaces"]}))
         .collect()
+}
+fn coverage(record: &Value, block: &Value) -> Result<()> {
+    let mut covered: Vec<&Value> = record["owners"].as_array().into_iter().flatten().collect();
+    covered.extend(record["rigid_attachments"].as_array().into_iter().flatten().map(|a| &a["owner"]));
+    let bodies = block["bodies"].as_array().ok_or_else(|| error("CAD block bodies missing"))?;
+    if covered.len() != bodies.len() || bodies.iter().any(|body| covered.iter().filter(|owner| **owner == body).count() != 1) {
+        return Err(error("ROM and explicit rigid attachments must cover every CAD body exactly once"));
+    }
+    Ok(())
 }
 pub(super) fn binding(s: &Session, block: &Value) -> Result<Option<String>> {
     let bound = bindings(s);
@@ -179,9 +205,7 @@ pub(super) fn binding(s: &Session, block: &Value) -> Result<Option<String>> {
         return Err(error(format!("{id}: ROM is stale; rebuild mesh and reduction")));
     }
     validate(&record["job"], &record["result"])?;
-    if block["bodies"] != record["owners"] {
-        return Err(error("ROM must cover the entire native rigid block; attached parts cannot be omitted"));
-    }
+    coverage(record, block)?;
     Ok(Some(id.into()))
 }
 fn bind(s: &mut Session, p: &Value) -> Result<Value> {
@@ -193,12 +217,13 @@ fn bind(s: &mut Session, p: &Value) -> Result<Value> {
             return Err(error("rebuild stale ROM before MKS binding"));
         }
         validate(&record["job"], &record["result"])?;
-        let owners = record["owners"].clone();
+        let record = record.clone();
         let graph = s.execute("mks.model", &json!({}))?;
         let block = graph["blocks"].as_array().into_iter().flatten().find(|b| b["id"] == block_id).ok_or_else(|| error("CAD/MKS block missing"))?;
-        if block["grounded"] == true || block["bodies"] != owners {
-            return Err(error("bind a complete moving CAD/MKS block; a part-only ROM cannot silently replace its rigid attachments"));
+        if block["grounded"] == true {
+            return Err(error("bind a moving CAD/MKS block"));
         }
+        coverage(&record, block)?;
     }
     let mut all = models(s);
     if p.enabled {
@@ -217,11 +242,26 @@ pub(super) fn worker_job(s: &Session, job: &Value) -> Result<Value> {
         return Ok(job.clone());
     }
     let mut components = serde_json::Map::new();
+    let ports = super::mechanics::model_ports(s)?;
     for b in job["model"]["bodies"].as_array().into_iter().flatten() {
         if let Some(id) = b["flexible_component"].as_str() {
             let m = get(s, id)?;
             validate(&m["job"], &m["result"])?;
-            components.insert(id.into(), m.clone());
+            let mut m = m.clone();
+            let mut port_attachments = serde_json::Map::new();
+            for attachment in m["rigid_attachments"].as_array().into_iter().flatten() {
+                for port in &ports {
+                    if port["valid"] == true
+                        && port["port"]["body"] == attachment["owner"]["source"]
+                        && port["port"]["occurrence"] == attachment["owner"]["path"]
+                        && let Some(port_id) = port["port"]["id"].as_str()
+                    {
+                        port_attachments.insert(port_id.into(), attachment["interface"].clone());
+                    }
+                }
+            }
+            m["port_attachments"] = json!(port_attachments);
+            components.insert(id.into(), m);
         }
     }
     if components.is_empty() {
@@ -263,6 +303,76 @@ fn source(s: &Session) -> Result<Value> {
 fn get<'a>(s: &'a Session, id: &str) -> Result<&'a Value> {
     s.doc.fem_models.as_ref().and_then(|v| v["models"].get(id)).filter(|m| m.is_object()).ok_or_else(|| error("FEM component not found"))
 }
+fn tube_shape(s: &Session, body: &solidcraft_doc::ModelBody, world: solidcraft_doc::Mat) -> Result<Value> {
+    let outer = s.doc.features.iter().find(|f| f.id == body.feature && !f.suppressed).ok_or_else(|| error("tube outer primitive missing"))?;
+    let bore = s
+        .doc
+        .features
+        .iter()
+        .rev()
+        .find(|f| {
+            !f.suppressed
+                && f.participants.contains(&body.name)
+                && matches!(f.kind, FeatureKind::Cylinder { operation: solidcraft_doc::Operation::Cut, .. })
+        })
+        .ok_or_else(|| error("tube through bore missing"))?;
+    let FeatureKind::Cylinder { base, axis, radius, height, operation: solidcraft_doc::Operation::NewBody, .. } = &outer.kind else {
+        return Err(error("automatic tube mesh requires a native cylinder followed by a coaxial through bore"));
+    };
+    let FeatureKind::Cylinder {
+        base: cut_base,
+        axis: cut_axis,
+        radius: cut_radius,
+        height: cut_height,
+        operation: solidcraft_doc::Operation::Cut,
+        ..
+    } = &bore.kind
+    else {
+        return Err(error("tube bore must be a native cylindrical cut"));
+    };
+    let coord = |p: &[solidcraft_doc::Expr; 3]| -> Result<Vec3> {
+        Ok(Vec3::new(s.doc.eval(&p[0], Kind::Length)?, s.doc.eval(&p[1], Kind::Length)?, s.doc.eval(&p[2], Kind::Length)?))
+    };
+    let base = coord(base)?;
+    let cut_base = coord(cut_base)?;
+    let axis = axis.0;
+    let r = s.doc.eval(radius, Kind::Length)?;
+    let inner = s.doc.eval(cut_radius, Kind::Length)?;
+    let length = s.doc.eval(height, Kind::Length)?;
+    let cut_length = s.doc.eval(cut_height, Kind::Length)?;
+    let tol = length.max(r).max(1.) * 1e-6;
+    let a = (cut_base - base).dot(axis);
+    let b = (cut_base + cut_axis.0 * cut_length - base).dot(axis);
+    if r <= inner
+        || inner <= 0.
+        || length <= 0.
+        || axis.cross(cut_axis.0).len() > 1e-8
+        || (cut_base - base - axis * a).len() > tol
+        || a.min(b) > tol
+        || a.max(b) < length - tol
+        || ![4, 6].contains(&solidcraft_doc::naming::face_names(body).len())
+    {
+        return Err(error("automatic tube mesh requires a complete coaxial through bore and two annular end faces"));
+    }
+    if body.mesh().positions.iter().any(|p| {
+        let d = *p - base;
+        let x = d.dot(axis);
+        let radial = (d - axis * x).len();
+        x < -tol
+            || x > length + tol
+            || radial < inner - tol
+            || radial > r + tol
+            || (x.abs() > tol && (x - length).abs() > tol && (radial - inner).abs() > tol && (radial - r).abs() > tol)
+    }) {
+        return Err(error("modified tube boundary requires a conforming imported volume mesh"));
+    }
+    let volume = body.measure().map_err(|e| error(e.to_string()))?.volume;
+    let expected = std::f64::consts::PI * (r * r - inner * inner) * length;
+    if !volume.is_finite() || (volume - expected).abs() > expected * 2e-4 {
+        return Err(error("CAD volume differs from the complete annular tube"));
+    }
+    Ok(json!({"kind":"tube","base_mm":base,"axis":axis,"radius_mm":r,"inner_radius_mm":inner,"length_mm":length,"world":world}))
+}
 fn automatic_shape(s: &Session, body: &solidcraft_doc::ModelBody, world: solidcraft_doc::Mat) -> Result<Value> {
     let feature = s
         .doc
@@ -270,6 +380,16 @@ fn automatic_shape(s: &Session, body: &solidcraft_doc::ModelBody, world: solidcr
         .iter()
         .find(|f| f.id == body.feature && !f.suppressed)
         .ok_or_else(|| error("native primitive feature not found; import a conforming TET4 mesh"))?;
+    if matches!(feature.kind, FeatureKind::Cylinder { .. })
+        && [4, 6].contains(&solidcraft_doc::naming::face_names(body).len())
+        && s.doc.features.iter().any(|f| {
+            !f.suppressed
+                && f.participants.contains(&body.name)
+                && matches!(f.kind, FeatureKind::Cylinder { operation: solidcraft_doc::Operation::Cut, .. })
+        })
+    {
+        return tube_shape(s, body, world);
+    }
     let coord = |p: &[solidcraft_doc::Expr; 3]| -> Result<Vec3> {
         Ok(Vec3::new(s.doc.eval(&p[0], Kind::Length)?, s.doc.eval(&p[1], Kind::Length)?, s.doc.eval(&p[2], Kind::Length)?))
     };
@@ -377,6 +497,31 @@ fn create(s: &mut Session, p: &Value) -> Result<Value> {
     if owned.is_empty() || owned.len() > 256 || p.body.is_some() && owned.len() != 1 {
         return Err(error("ambiguous/empty body selection; select the complete block or a uniquely named part"));
     }
+    if p.rigid_attachments.len() > 256 || p.joint_interfaces.len() > 8 {
+        return Err(error("at most 256 rigid attachments and eight joint interface assignments"));
+    }
+    let mut attachments = Vec::new();
+    for a in &p.rigid_attachments {
+        let candidates: Vec<_> =
+            block["bodies"].as_array().into_iter().flatten().filter(|b| b["source"] == a.body && b["path"] == json!(a.path)).collect();
+        let [owner] = candidates.as_slice() else { return Err(error("rigid attachment CAD occurrence missing or ambiguous")) };
+        if !p.interfaces.contains(&a.interface) || owned.contains(owner) || attachments.iter().any(|v: &Value| v["owner"] == **owner) {
+            return Err(error("each rigid attachment needs a distinct non-FE body and a selected surface interface"));
+        }
+        attachments.push(json!({"owner":owner,"interface":a.interface}));
+    }
+    let mut joints = std::collections::BTreeSet::new();
+    for j in &p.joint_interfaces {
+        if !p.interfaces.contains(&j.interface)
+            || !joints.insert(j.joint)
+            || !graph["joints"].as_array().into_iter().flatten().any(|v| v["id"] == j.joint && (v["a"] == p.block || v["b"] == p.block))
+        {
+            return Err(error("assign each native joint once to a selected ROM surface on this block"));
+        }
+    }
+    if !attachments.is_empty() {
+        coverage(&json!({"owners":owned,"rigid_attachments":attachments}), block)?;
+    }
     let native = s.model.state();
     let mut shape = None;
     if p.mesh.is_none() {
@@ -431,7 +576,7 @@ fn create(s: &mut Session, p: &Value) -> Result<Value> {
         let origin = apply_point(&frame, Vec3::ZERO);
         let mut spec = json!({"id":id,"origin_mm":origin,"triangles_mm":triangles,"area_mm2":port["port"]["area_mm2"]});
         if let Some(sh) = &shape
-            && sh["kind"] == "cylinder"
+            && (sh["kind"] == "cylinder" || sh["kind"] == "tube")
         {
             let base: Vec3 = serde_json::from_value(sh["base_mm"].clone()).map_err(|e| error(e.to_string()))?;
             let axis: Vec3 = serde_json::from_value(sh["axis"].clone()).map_err(|e| error(e.to_string()))?;
@@ -441,6 +586,9 @@ fn create(s: &mut Session, p: &Value) -> Result<Value> {
             let direction = apply_vector(&world, axis);
             if (origin - start).len() < 1e-4 || (origin - start - direction * length).len() < 1e-4 {
                 spec["disk"] = json!({"center_mm":origin,"normal":direction,"radius_mm":radius});
+                if sh["kind"] == "tube" {
+                    spec["disk"]["inner_radius_mm"] = sh["inner_radius_mm"].clone();
+                }
             }
         }
         interfaces.push(spec);
@@ -459,7 +607,7 @@ fn create(s: &mut Session, p: &Value) -> Result<Value> {
         return Err(error("at most eight FEM component models"));
     }
     let enabled = all["models"][&p.id]["enabled"] == true;
-    all["models"][&p.id] = json!({"id":p.id,"block":p.block,"body":p.body,"owners":owned,"job":job,"result":null,"enabled":enabled});
+    all["models"][&p.id] = json!({"id":p.id,"block":p.block,"body":p.body,"owners":owned,"rigid_attachments":attachments,"joint_interfaces":p.joint_interfaces,"job":job,"result":null,"enabled":enabled});
     save(s, all)?;
     Ok(json!({"id":p.id}))
 }
@@ -470,7 +618,14 @@ fn read(s: &mut Session, p: &Value) -> Result<Value> {
     let list:Vec<_>=entries.into_iter().flatten().map(|(id,m)|json!({"id":id,"block":m["block"],"body":m["body"],"current":m["job"]["source"]==src,"has_result":m["result"].is_object(),"has_flexible":m["result"]["flexible"].is_object(),"enabled":m["enabled"]==true,"interfaces":m["job"]["interfaces"].as_array().map(|a|a.iter().map(|v|v["id"].clone()).collect::<Vec<_>>()),"mass_kg":m["result"]["mass_kg"],"full_dofs":m["result"]["rom"]["full_dofs"],"reduced_dofs":m["result"]["rom"]["reduced_dofs"],"frequencies_hz":m["result"]["rom"]["fixed_interface_frequencies_hz"],"max_displacement_mm":m["result"]["static"]["max_displacement_mm"],"max_stress_mpa":m["result"]["static"]["max_von_mises_mpa"],"static_rom_error":m["result"]["static"]["full_vs_rom_relative_displacement_error"]})).collect();
     let graph = s.execute("mks.model", &json!({}))?;
     let ports = super::mechanics::model_ports(s)?;
-    let scopes:Vec<_>=graph["blocks"].as_array().into_iter().flatten().map(|b|json!({"id":b["id"],"name":b["id"],"bodies":b["bodies"],"interfaces":ports.iter().filter(|port|port["valid"]==true&&port["port"]["support"]=="surface"&&b["bodies"].as_array().is_some_and(|bodies|bodies.iter().any(|v|v["source"]==port["port"]["body"]&&v["path"]==port["port"]["occurrence"]))).map(|v|v["port"]["id"].clone()).collect::<Vec<_>>()})).collect();
+    let scopes: Vec<_> = graph["blocks"].as_array().into_iter().flatten().map(|b| {
+        let surfaces: Vec<_> = ports.iter().filter(|port| port["valid"] == true && port["port"]["support"] == "surface"
+            && b["bodies"].as_array().into_iter().flatten().any(|v| v["source"] == port["port"]["body"] && v["path"] == port["port"]["occurrence"]))
+            .map(|p| json!({"id":p["port"]["id"],"body":p["port"]["body"],"path":p["port"]["occurrence"]})).collect();
+        let joints: Vec<_> = graph["joints"].as_array().into_iter().flatten().filter(|j| j["a"] == b["id"] || j["b"] == b["id"])
+            .map(|j| json!({"id":j["id"],"name":j["name"]})).collect();
+        json!({"id":b["id"],"name":b["id"],"bodies":b["bodies"],"interfaces":surfaces.iter().map(|p|p["id"].clone()).collect::<Vec<_>>(),"surface_owners":surfaces,"joints":joints})
+    }).collect();
     let data = if p.detail { p.id.as_deref().map(|id| get(s, id).cloned()).transpose()? } else { None };
     Ok(json!({"models":list,"scopes":scopes,"data":data}))
 }

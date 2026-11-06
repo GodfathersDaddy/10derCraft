@@ -27,7 +27,7 @@ For the local Mathcad-style worksheet backend, install .NET 10 SDK and run `powe
 - Robot arm: parameterized CAD, large-motion example, independent motion sources, sensors, joint-force plots and a dense drag-and-drop workflow.
 - Pendulum: ground, revolute joint, arm and end weight, with 1001 stored output points.
 - Additional calculation-to-CAD, mechanical-interface, mass-property and variant examples.
-- Solid-FEM/ROM flexible arm and two-flexible-arm crane with saved numerical results.
+- Solid-FEM/ROM flexible arm, two-flexible-arm crane and the detailed six-axis robot with two hollow-profile ROMs, explicit rigid attachments and saved numerical results.
 - Robot with mounted catalogue gripper motor, adapter plate and native standard fasteners.
 - Assembled 34-part Advent calendar with radial drawer joints and a removable top.
 
@@ -43,7 +43,7 @@ Supported dynamics include bounded open rigid and mixed rigid/FFRF trees with re
 
 Native joint sensing also provides local torque components and their magnitude. Scope includes separate collective selections for total joint torque and revolute-axis Mz. The servo library contains an independently modelled Panasonic MSMF202L1H8 mounting envelope with catalogue mass. Its motor-side mounting module and a separate robot installation layout are included under Examples. [Method and remaining mechanical work](docs/10dercraft/MKS_GELENKMOMENTE_UND_A2_ANTRIEB.md)
 
-Automatic volume meshing covers complete primitive boxes and cylinders. Detailed multi-part groups require a conforming imported volume mesh and explicit connection assumptions. The detailed six-axis arm still needs complete flexible-group ROMs, mechanically resolved drive connections and manufacturing verification. Contact, a functioning gripper transmission and arbitrary controller execution remain open. See the [robot workflow status](docs/10dercraft/ROBOTER_ROM_WORKFLOW_STATUS.md). Upstream analytic drawing projection currently reports native involute surfaces as unsupported.
+Automatic volume meshing covers verified native boxes, cylinders and coaxially bored tubes. A flexible part can retain all other CAD bodies as explicitly assigned rigid attachment groups with their mass and inertia. The detailed six-axis example now includes two coupled hollow-profile ROMs and all its attached CAD bodies. Its remaining mechanical drive connections and manufacturing verification are still open. The [flexible robot workflow](docs/10dercraft/FLEXIBLER_ROBOTER_WORKFLOW.md) documents the modelling assumptions and the calculated example. Contact, a functioning gripper transmission and arbitrary controller execution remain open. See the [robot workflow status](docs/10dercraft/ROBOTER_ROM_WORKFLOW_STATUS.md). Upstream analytic drawing projection currently reports native involute surfaces as unsupported.
 
 ## Research and verification
 
@@ -53,7 +53,7 @@ Engine operations are registered commands and accessible through the existing co
 
 Full project gate before commits: `cargo xtask ci`. The integration report records actual checks; a successful build alone is not a physical validation of every example.
 
-The earlier release has its own [verification scope](docs/10dercraft/evidence/focused-release.json). The current development snapshot has broad tests paused at the owner's request. Its [checkpoint record](docs/10dercraft/ZWISCHENSTAND_2026-11-05.md) distinguishes earlier checks from subsequent untested edits. Building or packaging the application supplies no additional physical qualification.
+The earlier release has its own [verification scope](docs/10dercraft/evidence/focused-release.json). The current development snapshot has broad tests paused at the owner's request. Its [checkpoint record](docs/10dercraft/ZWISCHENSTAND_2026-11-06.md) distinguishes earlier checks from subsequent untested edits. Building or packaging the application supplies no additional physical qualification.
 
 ## Licence
 

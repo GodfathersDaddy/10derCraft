@@ -1,0 +1,18 @@
+{
+  "de": {
+    "ui.fem_rom.attachments": "Starre Anbauteile an ROM-Flächen",
+    "ui.fem_rom.attachments_help": "Ordne jedes Anbauteil einer ausgewählten Kraftübertragungsfläche zu. Masse, Schwerpunkt und Trägheit werden aus dem CAD übernommen. Die Verbindung zur Fläche wird als starr angenommen.",
+    "ui.fem_rom.auto_surface": "Deckungsgleiche Fläche",
+    "ui.fem_rom.joint_interfaces": "Gelenke an ROM-Flächen anbinden",
+    "ui.fem_rom.joint_interfaces_help": "Wähle die Kraftübertragungsfläche für jedes Gelenk. Der Abstand zur Gelenkachse wird über eine ideale starre Transformation gekoppelt. Diese fügt weder Masse noch Nachgiebigkeit hinzu.",
+    "ui.fem_rom.unassigned": "Fläche auswählen"
+  },
+  "en": {
+    "ui.fem_rom.attachments": "Rigid attachments on ROM surfaces",
+    "ui.fem_rom.attachments_help": "Assign every attached part to a selected load-transfer surface. CAD supplies its mass, centre of mass and inertia. Its connection to that surface is assumed rigid.",
+    "ui.fem_rom.auto_surface": "Coincident surface",
+    "ui.fem_rom.joint_interfaces": "Connect joints to ROM surfaces",
+    "ui.fem_rom.joint_interfaces_help": "Select the load-transfer surface for each joint. An ideal rigid transform spans the distance to its axis, adding neither mass nor compliance.",
+    "ui.fem_rom.unassigned": "Select surface"
+  }
+}

@@ -31,3 +31,8 @@ Als Getriebekandidat wird die CSG-50-Familie weiter untersucht. Die Übersetzung
 Der neue Roboterentwurf enthält eine erneut berechnete Starrkörperbewegung und die separate Balken-Vorberechnung. Momentenverläufe und vorläufige Antriebsanforderungen liegen unter examples/manufacturing/robot-8kg und docs/10dercraft/evidence/robot-axis-drive. Der lokale Herstellerkatalog wird als Literaturquelle außerhalb des Repositorys aufbewahrt.
 
 Die Anwendung wurde gebaut und die normalen CAD-/Berechnungsbefehle ausgeführt. Die neuen Scope- und Gelenkansichten wurden in einer isolierten nativen Instanz mit OpenGL dargestellt und aufgenommen. Breite Tests bleiben auf Benutzerwunsch pausiert. Damit sind weder die Fertigungsfreigabe des Gesamtarms noch die flexible FEM–ROM–MKS-Kopplung der detaillierten Achsgruppen nachgewiesen.
+
+
+## Fortschreibung mit flexiblen Rohr-ROMs
+
+Das später am 06.11.2026 berechnete flexible Modell ergibt für A2 etwa 403,65 Nm RMS über die acht Sekunden und 875,48 Nm maximale Mz-Reaktion. Unter denselben vorläufigen Annahmen werden motorseitig 6,73 Nm RMS und 14,59 Nm Spitze benötigt. Der 2-kW-Montagekandidat mit 6,37 Nm Nennmoment deckt diese RMS-Abschätzung nicht ab. Eine weitere Dimensionierung erfordert Netz-, Moden- und Zeitschrittbewertung, Anfangsgleichgewicht und den realen Betriebszyklus. [Aktueller flexibler Workflow](FLEXIBLER_ROBOTER_WORKFLOW.md)

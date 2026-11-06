@@ -51,6 +51,7 @@ pub struct ReplayMesh {
     pub color: Rgb,
     pub block: usize,
     pub world: Mat,
+    attachment: Option<String>,
 }
 struct Pose {
     position: Vec3,
@@ -81,14 +82,31 @@ pub struct AssemblyReplay {
     links: Vec<Link>,
 }
 struct Elastic {
+    source: String,
     basis: Vec<Vec<f64>>,
     states: Vec<Vec<f64>>,
+    attachments: std::collections::BTreeMap<String, Block>,
 }
 fn error(message: impl Into<String>) -> crate::EngineError {
     bad("mks.replay", message)
 }
 fn vector(v: &Value) -> Result<Vec3> {
     serde_json::from_value(v.clone()).map_err(|e| error(e.to_string()))
+}
+fn poses(value: &Value, count: usize) -> Result<Vec<Pose>> {
+    let rows = value.as_array().filter(|v| v.len() == count).ok_or_else(|| error("trajectory missing"))?;
+    rows.iter()
+        .map(|row| {
+            let row: Vec<f64> = serde_json::from_value(row.clone()).map_err(|e| error(e.to_string()))?;
+            if row.len() != 12 || row.iter().any(|v| !v.is_finite()) {
+                return Err(error("invalid pose"));
+            }
+            Ok(Pose {
+                position: Vec3::new(row[0], row[1], row[2]) * 1000.,
+                rotation: Quat::from_basis(Vec3::new(row[3], row[6], row[9]), Vec3::new(row[4], row[7], row[10]), Vec3::new(row[5], row[8], row[11])),
+            })
+        })
+        .collect()
 }
 pub fn prepare(s: &mut Session) -> Result<AssemblyReplay> {
     let state = s.execute("mks.job.state", &json!({}))?;
@@ -160,17 +178,39 @@ pub fn prepare(s: &mut Session) -> Result<AssemblyReplay> {
                 return Err(error("invalid flexible replay matrices"));
             }
             let mesh = Mesh { positions, triangles, ..Default::default() };
-            out.elastic.insert(index, Elastic { basis, states });
+            let mut attachments = std::collections::BTreeMap::new();
+            for (port, state) in elastic["attachment_states"].as_object().into_iter().flatten() {
+                attachments
+                    .insert(port.clone(), Block { com: vector(&state["com_world_m"])? * 1000., poses: poses(&state["poses"], out.times.len())? });
+            }
+            out.elastic.insert(index, Elastic { source: id.into(), basis, states, attachments });
             out.meshes.push(ReplayMesh {
                 source: id.into(),
                 mesh: Arc::new(mesh),
                 color: crate::view::Palette::DEFAULT.body,
                 block: index,
                 world: IDENTITY,
+                attachment: None,
             });
         }
-        if !out.elastic.contains_key(&index) {
+        {
             for placed in block["bodies"].as_array().into_iter().flatten() {
+                let mut attachment = None;
+                if let Some(elastic) = out.elastic.get(&index) {
+                    let record = s.doc.fem_models.as_ref().and_then(|v| v["models"].get(&elastic.source)).ok_or_else(|| error("ROM missing"))?;
+                    if record["owners"].as_array().into_iter().flatten().any(|owner| owner == placed) {
+                        continue;
+                    }
+                    let binding = record["rigid_attachments"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .find(|a| a["owner"] == *placed)
+                        .and_then(|a| a["interface"].as_str())
+                        .filter(|id| elastic.attachments.contains_key(*id))
+                        .ok_or_else(|| error("rigid attachment replay missing"))?;
+                    attachment = Some(binding.to_owned());
+                }
                 let body = native
                     .bodies
                     .iter()
@@ -194,6 +234,7 @@ pub fn prepare(s: &mut Session) -> Result<AssemblyReplay> {
                     color,
                     block: index,
                     world: serde_json::from_value(placed["world"].clone()).map_err(|e| error(e.to_string()))?,
+                    attachment,
                 });
             }
         }
@@ -336,13 +377,38 @@ impl AssemblyReplay {
     }
     pub fn worlds(&self, time: f64) -> Vec<Mat> {
         let deltas = self.deltas(time);
-        self.meshes.iter().map(|m| mat_mul(deltas.get(m.block).unwrap_or(&IDENTITY), &m.world)).collect()
+        let time = if time.is_finite() { time } else { self.times[0] };
+        let a = self.times.partition_point(|t| *t <= time).saturating_sub(1).min(self.times.len() - 1);
+        let b = (a + 1).min(self.times.len() - 1);
+        let u = if a == b { 0. } else { ((time - self.times[a]) / (self.times[b] - self.times[a])).clamp(0., 1.) };
+        self.meshes
+            .iter()
+            .map(|m| {
+                if let Some(attachment) = m.attachment.as_ref().and_then(|id| self.elastic.get(&m.block)?.attachments.get(id)) {
+                    let p = &attachment.poses[a];
+                    let q = &attachment.poses[b];
+                    let (x, y, z) = p.rotation.slerp(q.rotation, u).basis();
+                    let mut delta = IDENTITY;
+                    for (i, v) in [x, y, z].iter().enumerate() {
+                        delta[i] = [v.x, v.y, v.z, 0.];
+                    }
+                    let translation = p.position * (1. - u) + q.position * u - apply_vector(&delta, attachment.com);
+                    delta[3] = [translation.x, translation.y, translation.z, 1.];
+                    mat_mul(&delta, &m.world)
+                } else {
+                    mat_mul(deltas.get(m.block).unwrap_or(&IDENTITY), &m.world)
+                }
+            })
+            .collect()
     }
     /// Bounded CPU reconstruction of the FE surface; rigid CAD meshes remain
     /// uploaded once. Interpolation changes the view, never solver histories.
     pub fn elastic_mesh(&self, index: usize, time: f64) -> Option<Mesh> {
         let source = self.meshes.get(index)?;
         let elastic = self.elastic.get(&source.block)?;
+        if source.attachment.is_some() || source.source != elastic.source {
+            return None;
+        }
         let a = self.times.partition_point(|t| *t <= time).saturating_sub(1).min(self.times.len() - 1);
         let b = (a + 1).min(self.times.len() - 1);
         let u = if a == b { 0. } else { ((time - self.times[a]) / (self.times[b] - self.times[a])).clamp(0., 1.) };

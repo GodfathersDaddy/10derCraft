@@ -9,6 +9,8 @@ struct Draft {
     block: String,
     body: String,
     interfaces: Vec<String>,
+    rigid_attachments: Vec<Value>,
+    joint_interfaces: std::collections::BTreeMap<u64, String>,
     young: f64,
     poisson: f64,
     density: f64,
@@ -30,6 +32,8 @@ impl Default for Draft {
             block: String::new(),
             body: String::new(),
             interfaces: Vec::new(),
+            rigid_attachments: Vec::new(),
+            joint_interfaces: Default::default(),
             young: 210000.,
             poisson: 0.3,
             density: 7850.,
@@ -88,6 +92,18 @@ fn model_draft(app: &mut SolveApp, id: &str) -> Result<Draft, String> {
         block: record["block"].as_str().unwrap_or_default().into(),
         body: record["body"].as_str().unwrap_or_default().into(),
         interfaces: job["interfaces"].as_array().into_iter().flatten().filter_map(|p| p["id"].as_str().map(str::to_owned)).collect(),
+        rigid_attachments: record["rigid_attachments"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|a| json!({"body":a["owner"]["source"],"path":a["owner"]["path"],"interface":a["interface"]}))
+            .collect(),
+        joint_interfaces: record["joint_interfaces"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|j| Some((j["joint"].as_u64()?, j["interface"].as_str()?.to_owned())))
+            .collect(),
         ..Draft::default()
     };
     draft.young = job["material"]["young_mpa"].as_f64().unwrap_or(draft.young);
@@ -230,6 +246,8 @@ fn form(app: &mut SolveApp, ui: &mut egui::Ui) {
                     if row.changed() {
                         d.body.clear();
                         d.interfaces.clear();
+                        d.rigid_attachments.clear();
+                        d.joint_interfaces.clear();
                         d.stored_mesh = None;
                         d.mesh_file.clear();
                     }
@@ -245,12 +263,18 @@ fn form(app: &mut SolveApp, ui: &mut egui::Ui) {
                 if ui.selectable_value(&mut d.body, String::new(), app.tr("ui.fem_rom.whole")).changed() {
                     d.stored_mesh = None;
                     d.mesh_file.clear();
+                    d.interfaces.clear();
+                    d.rigid_attachments.clear();
+                    d.joint_interfaces.clear();
                 }
                 for b in scope["bodies"].as_array().into_iter().flatten() {
                     if let Some(name) = b["source"].as_str() {
                         if ui.selectable_value(&mut d.body, name.into(), name).changed() {
                             d.stored_mesh = None;
                             d.mesh_file.clear();
+                            d.interfaces.clear();
+                            d.rigid_attachments.clear();
+                            d.joint_interfaces.clear();
                         }
                     }
                 }
@@ -259,6 +283,9 @@ fn form(app: &mut SolveApp, ui: &mut egui::Ui) {
         ui.label(app.tr("ui.fem_rom.port_order"));
         ui.horizontal_wrapped(|ui| {
             for id in scope["interfaces"].as_array().into_iter().flatten().filter_map(Value::as_str) {
+                if !d.body.is_empty() && !scope["surface_owners"].as_array().into_iter().flatten().any(|p| p["id"] == id && p["body"] == d.body) {
+                    continue;
+                }
                 let mut on = d.interfaces.iter().any(|v| v == id);
                 let check = ui.checkbox(&mut on, id);
                 scenario::publish_handle(&format!("fem:rom:interface:{id}"), check.rect.center());
@@ -274,6 +301,62 @@ fn form(app: &mut SolveApp, ui: &mut egui::Ui) {
         for (i, id) in d.interfaces.iter().enumerate() {
             ui.label(format!("{}: {}{}", i + 1, id, if i == 0 { format!(" · {}", app.tr("ui.fem_rom.reference")) } else { String::new() }));
         }
+        if !d.body.is_empty() {
+            ui.collapsing(app.tr("ui.fem_rom.attachments"), |ui| {
+                ui.add(egui::Label::new(app.tr("ui.fem_rom.attachments_help")).wrap());
+                let mut attachments = Vec::new();
+                for body in scope["bodies"].as_array().into_iter().flatten().filter(|b| b["source"] != d.body) {
+                    let name = body["source"].as_str().unwrap_or_default();
+                    let mut port = d
+                        .rigid_attachments
+                        .iter()
+                        .find(|a| a["body"] == name && a["path"] == body["path"])
+                        .and_then(|a| a["interface"].as_str())
+                        .filter(|id| d.interfaces.iter().any(|p| p == id))
+                        .unwrap_or_default()
+                        .to_owned();
+                    ui.horizontal(|ui| {
+                        ui.label(name);
+                        let row = egui::ComboBox::from_id_salt(("rom_attachment", name, body["path"].to_string()))
+                            .selected_text(if port.is_empty() { app.tr("ui.fem_rom.unassigned") } else { &port })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut port, String::new(), app.tr("ui.fem_rom.unassigned"));
+                                for id in &d.interfaces {
+                                    ui.selectable_value(&mut port, id.clone(), id);
+                                }
+                            });
+                        scenario::publish_handle(&format!("fem:rom:attachment:{name}"), row.response.rect.center());
+                    });
+                    if !port.is_empty() {
+                        attachments.push(json!({"body":name,"path":body["path"],"interface":port}));
+                    }
+                }
+                d.rigid_attachments = attachments;
+            });
+        }
+        ui.collapsing(app.tr("ui.fem_rom.joint_interfaces"), |ui| {
+            ui.add(egui::Label::new(app.tr("ui.fem_rom.joint_interfaces_help")).wrap());
+            for joint in scope["joints"].as_array().into_iter().flatten() {
+                if let Some(id) = joint["id"].as_u64() {
+                    let port = d.joint_interfaces.entry(id).or_default();
+                    if !d.interfaces.contains(port) {
+                        port.clear();
+                    }
+                    ui.horizontal(|ui| {
+                        ui.label(joint["name"].as_str().unwrap_or_default());
+                        let row = egui::ComboBox::from_id_salt(("rom_joint_interface", id))
+                            .selected_text(if port.is_empty() { app.tr("ui.fem_rom.auto_surface") } else { port.as_str() })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(port, String::new(), app.tr("ui.fem_rom.auto_surface"));
+                                for id in &d.interfaces {
+                                    ui.selectable_value(port, id.clone(), id);
+                                }
+                            });
+                        scenario::publish_handle(&format!("fem:rom:joint_interface:{id}"), row.response.rect.center());
+                    });
+                }
+            }
+        });
     }
     ui.horizontal(|ui| {
         ui.label(app.tr("ui.fem_rom.id"));
@@ -329,6 +412,8 @@ fn form(app: &mut SolveApp, ui: &mut egui::Ui) {
         if b.clicked(){let outcome=(||{
             let mut inputs=json!({"id":d.id,"block":d.block,"interfaces":d.interfaces,"material":{"young_mpa":d.young,"poisson_ratio":d.poisson,"density_kg_m3":d.density},"divisions":d.divisions,"modes":d.modes,"element_order":d.element_order});
             if !d.body.is_empty(){inputs["body"]=json!(d.body);}
+            inputs["rigid_attachments"]=json!(d.rigid_attachments);
+            inputs["joint_interfaces"]=json!(d.joint_interfaces.iter().filter(|(_,p)|!p.is_empty()).map(|(id,p)|json!({"joint":id,"interface":p})).collect::<Vec<_>>());
             if !d.mesh_file.is_empty(){inputs["mesh_path"]=json!(d.mesh_file);} else if let Some(mesh)=&d.stored_mesh {inputs["mesh"]=mesh.clone();}
             app.run("fem.model.create",inputs).map_err(|e|e.to_string())?;
             start(app,ui.ctx(),json!({"id":d.id,"flexible":flexible,"force_n":d.force,"moment_nm":d.moment,"motion":{"duration_s":d.duration,"steps":1000,"samples":101,"angle_deg":d.angle,"frequency_hz":1.,"ramp_s":d.duration.min(0.2)}}))

@@ -2,6 +2,12 @@
   "schema": "10dercraft.examples/1",
   "examples": [
     {
+      "id": "robot-flexible-8kg",
+      "title": "Roboter 8 kg - zwei flexible Rohr-ROMs",
+      "path": "examples/projects/Roboter-8kg-Zwei-ROM.solidcraft",
+      "description": "Berechnete Sechsachsbewegung mit zwei TET10/HCB-ROMs, CAD-Anbauteilen und Gelenkkräften sowie Momenten. Vorläufiger Entwurf mit idealen starren Anschlussannahmen."
+    },
+    {
       "id": "robot-servo-installation",
       "title": "Roboter 8 kg - Servoeinbau und Gelenkmomente",
       "path": "examples/projects/Roboter-8kg-Servoeinbau-Entwurf.solidcraft",

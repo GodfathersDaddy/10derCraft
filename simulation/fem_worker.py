@@ -94,6 +94,50 @@ def cylinder_mesh(shape,divisions):
         transform=finite(shape['world'],(4,4)).T;nodes=nodes@transform[:3,:3].T+transform[:3,3]
     return nodes,np.asarray(cells,dtype=int)
 
+def tube_mesh(shape, divisions):
+    origin = finite(shape['base_mm'], (3,))
+    axis = finite(shape['axis'], (3,))
+    norm = np.linalg.norm(axis)
+    if norm < 1e-12:
+        raise ValueError('tube axis is zero')
+    axis = axis / norm
+    if len(divisions) != 3 or any(isinstance(n, bool) or not isinstance(n, int) for n in divisions):
+        raise ValueError('integer mesh divisions required')
+    outer = float(shape['radius_mm'])
+    inner = float(shape['inner_radius_mm'])
+    length = float(shape['length_mm'])
+    layers = divisions[0]
+    segments = 24
+    if not 0 < inner < outer or not length > 0 or not 1 <= layers <= 8:
+        raise ValueError('invalid annular tube dimensions or layers')
+    seed = np.array([1., 0, 0]) if abs(axis[0]) < .8 else np.array([0., 1, 0])
+    y = seed - axis * (seed @ axis)
+    y /= np.linalg.norm(y)
+    z = np.cross(axis, y)
+    cross = np.array([radius * (y * math.cos(2 * math.pi * i / segments)
+                               + z * math.sin(2 * math.pi * i / segments))
+                      for radius in [inner, outer] for i in range(segments)])
+    # A triangulated annulus is extruded with a consistent sorted-node prism
+    # split. No cells span the bore, and adjacent prisms share their diagonals.
+    triangles = []
+    for i in range(segments):
+        j = (i + 1) % segments
+        triangles.extend([[i, segments + i, segments + j], [i, segments + j, j]])
+    count = len(cross)
+    nodes = np.array([origin + axis * length * k / layers + p
+                      for k in range(layers + 1) for p in cross])
+    cells = []
+    for k in range(layers):
+        for triangle in triangles:
+            a, b, c = sorted(triangle)
+            a0, b0, c0 = np.array([a, b, c]) + k * count
+            a1, b1, c1 = np.array([a, b, c]) + (k + 1) * count
+            cells.extend([[a0, b0, c0, c1], [a0, b0, b1, c1], [a0, a1, b1, c1]])
+    if 'world' in shape:
+        transform = finite(shape['world'], (4, 4)).T
+        nodes = nodes @ transform[:3, :3].T + transform[:3, 3]
+    return nodes, np.asarray(cells, dtype=int)
+
 def skin(tets):
     faces={}
     for tet in tets:
@@ -119,8 +163,9 @@ def prepare_mesh(job):
     mesh=job['mesh']
     if 'shape' in mesh:
         kind=mesh['shape'].get('kind')
-        if kind not in ['box','cylinder']:raise ValueError('automatic meshing supports verified boxes/cylinders only; import a conforming TET4 mesh for other geometry')
-        points,tets=(box_mesh if kind=='box' else cylinder_mesh)(mesh['shape'],mesh.get('divisions',[4,2,2]))
+        meshers = {'box': box_mesh, 'cylinder': cylinder_mesh, 'tube': tube_mesh}
+        if kind not in meshers:raise ValueError('automatic meshing supports verified boxes/cylinders/tubes only; import a conforming TET4 mesh for other geometry')
+        points,tets=meshers[kind](mesh['shape'],mesh.get('divisions',[4,2,2]))
     else:
         points=finite(mesh['nodes_mm']);raw=np.asarray(mesh['tetrahedra'])
         if not np.issubdtype(raw.dtype,np.integer):raise ValueError('tetrahedron indices must be integers')
@@ -148,7 +193,11 @@ def prepare_mesh(job):
         if 'disk' in item:
             disk=item['disk'];center=finite(disk['center_mm'],(3,))*.001;normal=finite(disk['normal'],(3,));normal/=np.linalg.norm(normal)
             distance=(points-center)@normal;radial=points-center-distance[:,None]*normal
-            nodes=np.where((np.abs(distance)<1e-8)&(np.linalg.norm(radial,axis=1)<=float(disk['radius_mm'])*.001*(1+1e-7)))[0]
+            radii = np.linalg.norm(radial, axis=1)
+            # Linear geometry chords lie slightly inside the analytic inner
+            # circle. Include them using the chord bound of the 24-sided mesh.
+            inner = float(disk.get('inner_radius_mm', 0)) * .001 * math.cos(math.pi / 24)
+            nodes=np.where((np.abs(distance)<1e-8)&(radii<=float(disk['radius_mm'])*.001*(1+1e-7))&(radii>=inner-1e-10))[0]
         else:nodes=on_surface(points,triangles,1e-8)
         if len(nodes)<3:raise ValueError(f"{item['id']}: fewer than three FE nodes on the actual CAD face; refine/import a matching mesh")
         if used.intersection(map(int,nodes)):raise ValueError('overlapping interface node sets')

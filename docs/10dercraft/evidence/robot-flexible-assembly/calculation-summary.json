@@ -1,0 +1,1426 @@
+{
+  "status": "success",
+  "scope": "Normal project calculation. Broad test suites paused. Preliminary linear-elastic robot concept.",
+  "source": {
+    "cad": {
+      "canonical_json_bytes": 196651,
+      "document_sha256": "26408dcba833191e3822a94c03df905fb655f7a86988c452250d2b1898dacdc7",
+      "normalization": "source-v2; excludes title and simulation result keys"
+    },
+    "flexible_components": [
+      {
+        "block": "block_3",
+        "id": "ROM_Oberarm",
+        "joint_interfaces": [
+          {
+            "interface": "IF_Oberarm",
+            "joint": 2
+          },
+          {
+            "interface": "IF_Oberarm_Tip",
+            "joint": 3
+          }
+        ],
+        "rigid_attachments": [
+          {
+            "interface": "IF_Oberarm",
+            "owner": {
+              "component": 36,
+              "path": [
+                37
+              ],
+              "source": "A2-Schulter",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Oberarm",
+            "owner": {
+              "component": 36,
+              "path": [
+                37
+              ],
+              "source": "A2-Deckel",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Oberarm",
+            "owner": {
+              "component": 36,
+              "path": [
+                37
+              ],
+              "source": "Oberarm-Ruecken",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Oberarm",
+            "owner": {
+              "component": 36,
+              "path": [
+                37
+              ],
+              "source": "A2-Lagerschild",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Oberarm",
+            "owner": {
+              "component": 36,
+              "path": [
+                37
+              ],
+              "source": "A2-Nabenkappe",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Oberarm",
+            "owner": {
+              "component": 36,
+              "path": [
+                37
+              ],
+              "source": "A2-Schraube-1",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Oberarm",
+            "owner": {
+              "component": 36,
+              "path": [
+                37
+              ],
+              "source": "A2-Schraube-2",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Oberarm",
+            "owner": {
+              "component": 36,
+              "path": [
+                37
+              ],
+              "source": "A2-Schraube-3",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Oberarm",
+            "owner": {
+              "component": 36,
+              "path": [
+                37
+              ],
+              "source": "A2-Schraube-4",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Oberarm",
+            "owner": {
+              "component": 36,
+              "path": [
+                37
+              ],
+              "source": "A2-Schraube-5",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Oberarm",
+            "owner": {
+              "component": 36,
+              "path": [
+                37
+              ],
+              "source": "A2-Schraube-6",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Oberarm",
+            "owner": {
+              "component": 36,
+              "path": [
+                37
+              ],
+              "source": "A2-Schraube-7",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Oberarm",
+            "owner": {
+              "component": 36,
+              "path": [
+                37
+              ],
+              "source": "A2-Schraube-8",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Oberarm",
+            "owner": {
+              "component": 36,
+              "path": [
+                37
+              ],
+              "source": "upper-Kabelpaket-0",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Oberarm",
+            "owner": {
+              "component": 36,
+              "path": [
+                37
+              ],
+              "source": "upper-Kabelpaket-1",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Oberarm",
+            "owner": {
+              "component": 36,
+              "path": [
+                37
+              ],
+              "source": "upper-Kabelpaket-2",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          }
+        ],
+        "signature": "e1c1f67132141274d846a2e9712fec596fe907de8894d7768a6ea09016ce50b0"
+      },
+      {
+        "block": "block_4",
+        "id": "ROM_Unterarm",
+        "joint_interfaces": [
+          {
+            "interface": "IF_Unterarm",
+            "joint": 3
+          },
+          {
+            "interface": "IF_Unterarm_Tip",
+            "joint": 4
+          }
+        ],
+        "rigid_attachments": [
+          {
+            "interface": "IF_Unterarm",
+            "owner": {
+              "component": 42,
+              "path": [
+                43
+              ],
+              "source": "A3-Ellbogen",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Unterarm",
+            "owner": {
+              "component": 42,
+              "path": [
+                43
+              ],
+              "source": "A3-Deckel",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Unterarm",
+            "owner": {
+              "component": 42,
+              "path": [
+                43
+              ],
+              "source": "Unterarm-Ruecken",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Unterarm",
+            "owner": {
+              "component": 42,
+              "path": [
+                43
+              ],
+              "source": "A3-Lagerschild",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Unterarm",
+            "owner": {
+              "component": 42,
+              "path": [
+                43
+              ],
+              "source": "A3-Nabenkappe",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Unterarm",
+            "owner": {
+              "component": 42,
+              "path": [
+                43
+              ],
+              "source": "A3-Schraube-1",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Unterarm",
+            "owner": {
+              "component": 42,
+              "path": [
+                43
+              ],
+              "source": "A3-Schraube-2",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Unterarm",
+            "owner": {
+              "component": 42,
+              "path": [
+                43
+              ],
+              "source": "A3-Schraube-3",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Unterarm",
+            "owner": {
+              "component": 42,
+              "path": [
+                43
+              ],
+              "source": "A3-Schraube-4",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Unterarm",
+            "owner": {
+              "component": 42,
+              "path": [
+                43
+              ],
+              "source": "A3-Schraube-5",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Unterarm",
+            "owner": {
+              "component": 42,
+              "path": [
+                43
+              ],
+              "source": "A3-Schraube-6",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Unterarm",
+            "owner": {
+              "component": 42,
+              "path": [
+                43
+              ],
+              "source": "A3-Schraube-7",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Unterarm",
+            "owner": {
+              "component": 42,
+              "path": [
+                43
+              ],
+              "source": "A3-Schraube-8",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Unterarm",
+            "owner": {
+              "component": 42,
+              "path": [
+                43
+              ],
+              "source": "A3-Servomotor",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Unterarm",
+            "owner": {
+              "component": 42,
+              "path": [
+                43
+              ],
+              "source": "A3-Motordeckel",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Unterarm",
+            "owner": {
+              "component": 42,
+              "path": [
+                43
+              ],
+              "source": "forearm-Kabelpaket-0",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Unterarm",
+            "owner": {
+              "component": 42,
+              "path": [
+                43
+              ],
+              "source": "forearm-Kabelpaket-1",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          },
+          {
+            "interface": "IF_Unterarm",
+            "owner": {
+              "component": 42,
+              "path": [
+                43
+              ],
+              "source": "forearm-Kabelpaket-2",
+              "world": [
+                [
+                  1.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            }
+          }
+        ],
+        "signature": "4d4e3c251ca7b3b12c870289cadb6ca4d62d57a5ef7fb2dd6d833cb1213a148a"
+      }
+    ]
+  },
+  "provenance": {
+    "completed_utc": "2026-11-06T00:28:29.662471+00:00",
+    "job_sha256": "8a491c26fa409057badb2847182999647e804974a055f0bd904989ea47b3c0c9",
+    "worker_sha256": "33736fb01891714963d1517c371a002cf7dada28e790f826ef58653f5ab34e7d"
+  },
+  "settings": {
+    "allow_assumed_density": false,
+    "drivers": [
+      {
+        "displacement": "ref_Hub_A1",
+        "frequency_hz": 0.25,
+        "joint": 1,
+        "profile": "sine",
+        "ramp_s": 0.8
+      },
+      {
+        "displacement": "ref_Hub_A2",
+        "frequency_hz": 0.25,
+        "joint": 2,
+        "profile": "sine",
+        "ramp_s": 0.8
+      },
+      {
+        "displacement": "ref_Hub_A3",
+        "frequency_hz": 0.375,
+        "joint": 3,
+        "profile": "sine",
+        "ramp_s": 0.8
+      },
+      {
+        "displacement": "ref_Hub_A4",
+        "frequency_hz": 0.5,
+        "joint": 4,
+        "profile": "sine",
+        "ramp_s": 0.8
+      },
+      {
+        "displacement": "ref_Hub_A5",
+        "frequency_hz": 0.25,
+        "joint": 5,
+        "profile": "sine",
+        "ramp_s": 0.8
+      },
+      {
+        "displacement": "ref_Hub_A6",
+        "frequency_hz": 0.5,
+        "joint": 6,
+        "profile": "sine",
+        "ramp_s": 0.8
+      }
+    ],
+    "duration_s": 8.0,
+    "gravity_m_s2": [
+      0.0,
+      0.0,
+      -9.81
+    ],
+    "port_loads": [],
+    "samples": 501,
+    "steps": 4000
+  },
+  "summary": {
+    "max_axis_alignment_error": 1.2384328266547518e-08,
+    "max_energy_change_j": 304.4557731924916,
+    "max_position_constraint_m": 1.923125926146718e-09
+  },
+  "flexible_components": {
+    "block_3": {
+      "component_id": "ROM_Oberarm",
+      "max_elastic_displacement_mm": 0.2029319084551884,
+      "fe_mass_kg": 6.567923941295872,
+      "full_dofs": 3888,
+      "reduced_dofs": 12,
+      "fixed_interface_frequencies_hz": [
+        1365.9720888737882,
+        1371.6565528658446,
+        1497.5592445650975,
+        1498.6986827786827,
+        2433.2969690592295,
+        2712.6892279078065
+      ],
+      "static_full_vs_rom_relative_error": 7.070605463722752e-12,
+      "rigid_attachment_interfaces": [
+        "IF_Oberarm"
+      ]
+    },
+    "block_4": {
+      "component_id": "ROM_Unterarm",
+      "max_elastic_displacement_mm": 0.11598589799473634,
+      "fe_mass_kg": 3.4061253881572786,
+      "full_dofs": 3888,
+      "reduced_dofs": 12,
+      "fixed_interface_frequencies_hz": [
+        1550.773270417828,
+        1554.93328485965,
+        1976.0224479036574,
+        1977.4025294031862,
+        2958.588236829807,
+        3013.590468184984
+      ],
+      "static_full_vs_rom_relative_error": 2.0918988499770827e-11,
+      "rigid_attachment_interfaces": [
+        "IF_Unterarm"
+      ]
+    }
+  },
+  "joint_moments": {
+    "1": {
+      "peak_mz_nm": 457.2304614855354,
+      "peak_time_s": 0.28800000000000003,
+      "rms_mz_nm": 154.37631799934022
+    },
+    "2": {
+      "peak_mz_nm": 875.4813459786396,
+      "peak_time_s": 1.264,
+      "rms_mz_nm": 403.6460755610907
+    },
+    "3": {
+      "peak_mz_nm": 394.44805114966636,
+      "peak_time_s": 0.6880000000000001,
+      "rms_mz_nm": 173.43627102201413
+    },
+    "4": {
+      "peak_mz_nm": 47.42715167177092,
+      "peak_time_s": 1.232,
+      "rms_mz_nm": 15.37346416006335
+    },
+    "5": {
+      "peak_mz_nm": 79.30204624376418,
+      "peak_time_s": 0.016,
+      "rms_mz_nm": 26.604770765060724
+    },
+    "6": {
+      "peak_mz_nm": 1.6465108648008173,
+      "peak_time_s": 0.608,
+      "rms_mz_nm": 0.5990711943573299
+    }
+  },
+  "assumptions": [
+    "Mixed rigid/FFRF open chain; stiffness-proportional damping calibrated to 1% at the lowest fixed-interface frequency.",
+    "Flexible joints and loads act through reduced CAD surface node sets. Explicit surface-to-joint mappings use ideal massless rigid-transform frames; these add no hardware mass or support flexibility.",
+    "Small elastic deformation, RBE2 rigid surfaces; no contact/plasticity. Zero initial elastic displacement/velocity; no static prestress initialization.",
+    "CAD attachments retain their mass and centroidal inertia, bonded rigidly to their explicitly selected surface. Their motion and energy are included separately. No bolt/contact compliance is inferred.",
+    "Energy includes full FE nodal kinetic energy, attachment rigid kinetic energy, elastic strain and gravitational potential; actuator/load work is not subtracted."
+  ],
+  "a2_preliminary_candidate": {
+    "motor": "MSMF202L1H8",
+    "rated_torque_nm": 6.37,
+    "assumed_ratio": 120,
+    "assumed_efficiency": 0.75,
+    "assumed_factor": 1.5,
+    "required_rms_nm": 6.727434592684846,
+    "required_peak_nm": 14.591355766310661,
+    "result": "RMS exceeds catalogue nominal torque under these assumptions. Re-size after numerical convergence and duty-cycle assessment."
+  }
+}
