@@ -395,7 +395,7 @@ pub fn inline(app: &mut SolveApp, ui: &mut egui::Ui, sample: usize, time: f64) -
         clip: [0.; 4],
         cap: [0.; 4],
         images: Vec::new(),
-        points: Vec::new(),
+        clouds: Vec::new(),
         analysis: [0.; 8],
         analysis_colors: [0.; 36],
         access: None,
@@ -406,6 +406,7 @@ pub fn inline(app: &mut SolveApp, ui: &mut egui::Ui, sample: usize, time: f64) -
         ssaa: 1.,
         hover_tint: [0.; 3],
         selection_tint: [0.; 3],
+        sky: [0.; 4],
     });
     ui.painter().add(egui_wgpu::Callback::new_paint_callback(rect, callback));
     scenario::publish_handle("mks:inline:canvas", rect.center());

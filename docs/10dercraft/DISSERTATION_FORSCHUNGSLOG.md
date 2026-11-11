@@ -2124,3 +2124,12 @@ Die aktuelle gespeicherte Rohrbaugruppe wurde über `mks.job.run` mit `recompute
 Gespeichert wurden der neu berechnete Modellstand, vollständige Ergebnisse, Prüfzusammenfassung und Gelenkkraftdiagramm unter `output/robot-rom-mks-validation/`. Der native AVI-Export enthält 241 Frames bei 30 fps. Eine MP4-Fassung wurde daraus kodiert. Der Export zeigt physikalisch skalierte elastische Geometrie. Für sichtbar überhöhte Verformungen steht in der interaktiven MKS-Ansicht die FE-Überlagerung zur Verfügung.
 
 Die beiden anfänglichen Desktop-Prüfstarts antworteten innerhalb der eingeschränkten Ausführungsumgebung nicht. Der erfolgreiche native Befehlslauf erfolgte außerhalb dieser Einschränkung. Die Solverdiagnose enthält zwei Exudyn-Abkündigungswarnungen für `rotationMarker0/1`, ohne Rechenabbruch. Die vorhandenen Modellannahmen bleiben kleine elastische Verformungen, ideal starre Anschlussflächen und einprozentige modale Dämpfung. Kontakt und Schweißnahtfestigkeit sind hier nicht nachgewiesen.
+
+
+## 2026-11-11 – Sicherung und SolidCraft-Integration
+
+Auf ausdrücklichen Nutzerwunsch wurde der aktuelle Entwicklungsstand ohne neue Testläufe als Commit 3c451c37 auf den Branch `10dercraft/upstream-2026-10-28` im Repository `GodfathersDaddy/10derCraft` hochgeladen. Anschließend wurde die stabile Originalversion v0.30.1 als Integrationsziel gewählt. Diese Auswahl folgt dem Wunsch nach einer schnellen Integration und der zuvor vorgeschlagenen stabilen Zwischenstufe. Die 0.40-Vorabversion mit solidcore bleibt ein eigener Migrationsschritt.
+
+Die Zusammenführung kombiniert die neue Mehrfachplatzierung von Normteilen und zöllige Teilefamilien mit den vorhandenen Motorbauteilen und der platzierungsbezogenen Erkennung der Anschlussflächen. Formelblatt-Tastatureingaben und die neuen Regeln für globale Tastenkürzel wurden zusammengeführt. Übersetzungen übernehmen neue Originaleinträge und erhalten lokale Anpassungen. Die macOS-Releasejobs verwenden den neuen Runner und behalten die vorhandene Repository-Bedingung.
+
+Die Veröffentlichung dieses Zwischenstands erfolgt mit übersprungenen CI-Läufen. Für die lokale Bereitstellung wird die native Anwendung gebaut. Ein erfolgreicher Build ersetzt die ausstehenden Bedien-, Modell- und Solverprüfungen nicht. Bestehende Beispielmodelle wurden während der Integration nicht neu gespeichert.

@@ -67,6 +67,13 @@ middle (`2 * t`) grows while the clock runs, so the pen moves outwards as it goe
 
 A number without a unit is in your design's unit (millimetres unless you changed it).
 
+## Other functions
+
+Besides `sin`, `cos` and `tan`, a rule can use `sqrt`, `exp`, `ln`, `pow`, `abs`, `min`, `max`
+and the hyperbolic functions `sinh`, `cosh` and `tanh` (and their inverses `asinh`, `acosh`,
+`atanh`), which take a plain number. A hanging chain is `20 * cosh(x / 20)` in **y(x)**, and the
+flare of a horn is often written with `cosh` and `sinh`.
+
 ## Using parameters: a gear tooth
 
 Rules can use the design's [parameters](parameters.md). Here a parameter `r` (20 mm) is the size
@@ -81,6 +88,24 @@ makes as you unwind it from the circle. The sides of most gear teeth have this s
 
 Change `r` in the Parameters dialog and the curve redraws itself to match: the rule is kept, not
 just the shape.
+
+## A variable with its range's unit
+
+Normally the variable is a plain number, even when **Start** and **End** are lengths. That stops a
+rule from mixing it with a length parameter: with `a` a length, `a ^ 2 / (4 * t)` comes out as a
+length squared.
+
+Tick **Variable has the range's unit** and the variable is a length, so the rule reads as the
+maths does:
+
+| Rule in **x(t)** | Rule in **y(t)** | Start | End |
+|---|---|---|---|
+| `t` | `a ^ 2 / (4 * t)` | `a` | `3 * a` |
+
+**Start** and **End** must then both be lengths, or one a length and the other a plain number,
+which is in your design's unit (`0` to `a` starts at 0). A length and an angle are refused: they
+have no unit in common. A rule that needs a plain number divides the variable by a length, such
+as `sin(t / a)`.
 
 ## From curve to part
 

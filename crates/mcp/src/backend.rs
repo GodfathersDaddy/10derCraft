@@ -212,9 +212,13 @@ impl Remote {
         }
     }
 
-    /// Connect now, if the app is there (`new` does not); the error says why not.
+    /// See whether the app is there now (`new` does not); the error says why not. The connection
+    /// doesn't stay open: the app closes one that shows no token within a few seconds, and the
+    /// first call may be long away. That call connects again.
     pub fn try_connect(&mut self) -> std::io::Result<()> {
-        self.reconnect()
+        self.reconnect()?;
+        self.drop_conn();
+        Ok(())
     }
 
     /// Failing to reach the app at all is `NotConnected`, so [`Remote::explain`] can tell it from
@@ -484,11 +488,10 @@ impl Remote {
     }
 }
 
-/// The issues `params` raise against the typed contract of `id` in this server's registry; none
-/// when it has no contract for `id` (the app may have commands this server lacks).
+/// What is wrong with `params` for `id` by this server's contracts, as messages; none when it has
+/// no contract for `id` (the app may have commands this server lacks).
 fn contract_issues(id: &str, params: &Value) -> Vec<String> {
-    let contract = solidcraft_engine::find_command(id).and_then(|c| c.contract);
-    contract.map(|c| c.check(params).into_iter().map(|i| i.message).collect()).unwrap_or_default()
+    solidcraft_engine::schema::issues(id, params).into_iter().map(|i| i.message).collect()
 }
 
 /// Give `reply` `issues` as its `param_warnings`, as a headless session at the warn level does; a
