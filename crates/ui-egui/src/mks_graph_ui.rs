@@ -39,6 +39,15 @@ struct Draft {
     running: Option<std::sync::Arc<crate::mks_run_ui::Running>>,
 }
 
+fn signal_color(data_type: &str) -> egui::Color32 {
+    let tokens = Tokens::get();
+    match data_type {
+        "integer" => tokens.axis_y,
+        "boolean" => tokens.warning,
+        "vector3" => tokens.axis_x,
+        _ => tokens.accent,
+    }
+}
 fn comparable_settings(settings: &Value, diagram: &crate::mks_diagram_ui::Diagram) -> Value {
     let mut value = settings.clone();
     if value["initial_equilibrium"] == false
@@ -118,17 +127,17 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui, model: &Value) {
         }
     }
     let before_settings = draft.settings.clone();
-    let host = crate::ui_kit::Container::new(ui.ctx(), crate::ui_kit::Surface::Chrome);
-    host.edge("mks_ribbon", crate::ui_kit::Edge::Top).frame(host.edge_frame(Tokens::get().toolbar).inner_margin(Tokens::get().space_8)).show(
-        ui,
-        |ui| {
-            ui.set_min_height(58.);
-            ui.style_mut().always_scroll_the_only_direction = true;
-            egui::ScrollArea::horizontal()
-                .id_salt("mks_ribbon_scroll")
-                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
+    crate::toolbar::engineering_ribbon(app, ui, "mks", |app, ui| {
+        let labels: Vec<_> = ["simulation", "blocks", "signals", "view"].iter().map(|v| app.tr(&format!("ui.engineering.{v}")).to_owned()).collect();
+        let (tab, _) = crate::toolbar::engineering_tabs(ui, "mks", &labels);
+        ui.set_min_height(72.);
+        ui.style_mut().always_scroll_the_only_direction = true;
+        egui::ScrollArea::horizontal()
+            .id_salt("mks_ribbon_scroll")
+            .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    if tab == 0 {
                         ui.heading("MKS");
                         ui.label(app.tr("ui.mks_graph.duration"));
                         let mut duration = draft.settings["duration_s"].as_f64().unwrap_or(2.);
@@ -186,48 +195,68 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui, model: &Value) {
                                 settings.remove("initial_equilibrium");
                             }
                         }
-                        let arrange = crate::toolbar::engineering_action(ui, "fit", app.tr("ui.workspace.arrange"), false);
-                        scenario::publish_handle("mks:graph:arrange", arrange.rect.center());
-                        if arrange.clicked() {
-                            draft.positions.clear();
-                            draft.scene = Rect::ZERO;
-                            draft.layout_dirty = true;
+                    }
+                    if tab == 1 || tab == 2 {
+                        let kinds: &[&str] = if tab == 1 {
+                            &["body", "revolute", "slider", "rom", "independent"]
+                        } else {
+                            &["sensor", "scope", "signal_input", "signal_output", "signal_link"]
+                        };
+                        for kind in kinds {
+                            let icon = match *kind {
+                                "body" | "rom" => "component",
+                                "sensor" | "scope" => "graph",
+                                "slider" => "move",
+                                _ => "joint",
+                            };
+                            let action = crate::toolbar::engineering_action(ui, icon, app.tr(&format!("ui.mks_ext.block.{kind}")), false);
+                            scenario::publish_handle(&format!("mks:ribbon:add:{kind}"), action.rect.center());
+                            if action.clicked() {
+                                insert_kind(&mut draft, kind, blocks);
+                            }
                         }
-                        let scope = crate::toolbar::engineering_action(ui, "graph", "Scope", draft.scope_visible);
-                        if scope.clicked() {
-                            draft.scope_visible = !draft.scope_visible;
-                        }
-                        scenario::publish_handle("mks:scope:toggle", scope.rect.center());
-                        crate::mks_video_ui::show(
-                            app,
-                            ui,
-                            state["result_current"] == true
-                                && comparable_settings(&draft.settings, &draft.diagram)
-                                    == comparable_settings(&state["data"]["job"]["settings"], &draft.diagram),
-                        );
-                        if crate::toolbar::engineering_action(ui, "settings", app.tr("ui.workspace.properties"), draft.inspector).clicked() {
-                            draft.inspector = !draft.inspector;
-                        }
-                        let cad = crate::toolbar::engineering_action(ui, "joint_origin", app.tr("ui.mks_cad.title"), false);
-                        scenario::publish_handle("mks:cad:open", cad.rect.center());
-                        if cad.clicked() {
-                            app.ui.project_page = "cad".into();
-                            app.ui.engineering_dialog = Some("cad_mks".into());
-                        }
-                        crate::mks_diagram_ui::ribbon(app, ui, &mut draft.diagram);
-                        if comparable_settings(&draft.settings, &draft.diagram)
-                            == comparable_settings(&state["data"]["job"]["settings"], &draft.diagram)
-                        {
-                            playback(app, ui, &state, &mut draft);
-                        } else if state["result_current"] == true {
-                            draft.playing = false;
-                            ui.label(app.tr("ui.mks_quality.changed"));
-                        }
-                    });
+                        ui.separator();
+                    }
+                    let arrange = crate::toolbar::engineering_action(ui, "fit", app.tr("ui.workspace.arrange"), false);
+                    scenario::publish_handle("mks:graph:arrange", arrange.rect.center());
+                    if arrange.clicked() {
+                        draft.positions.clear();
+                        draft.scene = Rect::ZERO;
+                        draft.layout_dirty = true;
+                    }
+                    let scope = crate::toolbar::engineering_action(ui, "graph", "Scope", draft.scope_visible);
+                    if scope.clicked() {
+                        draft.scope_visible = !draft.scope_visible;
+                    }
+                    scenario::publish_handle("mks:scope:toggle", scope.rect.center());
+                    crate::mks_video_ui::show(
+                        app,
+                        ui,
+                        state["result_current"] == true
+                            && comparable_settings(&draft.settings, &draft.diagram)
+                                == comparable_settings(&state["data"]["job"]["settings"], &draft.diagram),
+                    );
+                    if crate::toolbar::engineering_action(ui, "settings", app.tr("ui.workspace.properties"), draft.inspector).clicked() {
+                        draft.inspector = !draft.inspector;
+                    }
+                    let cad = crate::toolbar::engineering_action(ui, "joint_origin", app.tr("ui.mks_cad.title"), false);
+                    scenario::publish_handle("mks:cad:open", cad.rect.center());
+                    if cad.clicked() {
+                        app.ui.project_page = "cad".into();
+                        app.ui.engineering_dialog = Some("cad_mks".into());
+                    }
+                    crate::mks_diagram_ui::ribbon(app, ui, &mut draft.diagram);
+                    if comparable_settings(&draft.settings, &draft.diagram) == comparable_settings(&state["data"]["job"]["settings"], &draft.diagram)
+                    {
+                        playback(app, ui, &state, &mut draft);
+                    } else if state["result_current"] == true {
+                        draft.playing = false;
+                        ui.label(app.tr("ui.mks_quality.changed"));
+                    }
                 });
-            scenario::publish_handle("mks:ribbon", ui.min_rect().center());
-        },
-    );
+            });
+        scenario::publish_handle("mks:ribbon", ui.min_rect().center());
+    });
     if !draft.error.is_empty() {
         ui.colored_label(Tokens::get().warning, &draft.error);
     }
@@ -800,6 +829,7 @@ fn graph(app: &SolveApp, ui: &mut egui::Ui, blocks: &[Value], joints: &[Value], 
                 node_handle(ui, "mks:controller", controller.center());
             }
             let mut source_ports = BTreeMap::new();
+            let mut signal_inputs = BTreeMap::new();
             let mut source_obstacles = Vec::new();
             let mut extra_obstacles = Vec::new();
             let mut measurement_ports = BTreeMap::new();
@@ -816,8 +846,22 @@ fn graph(app: &SolveApp, ui: &mut egui::Ui, blocks: &[Value], joints: &[Value], 
                     Align2::LEFT_TOP,
                     format!(
                         "{}\n{}",
-                        app.tr(&format!("ui.mks_ext.{}", source["profile"].as_str().unwrap_or("quintic"))),
-                        source["displacement"].as_str().unwrap_or("")
+                        if source["kind"].as_str().is_some_and(|k| k != "motion") {
+                            source["link"].as_str().unwrap_or("").to_owned()
+                        } else {
+                            app.tr(&format!("ui.mks_ext.{}", source["profile"].as_str().unwrap_or("quintic"))).to_owned()
+                        },
+                        if source["kind"].as_str().is_some_and(|kind| kind != "motion") {
+                            if let Some(joint) = source["sensor_joint"].as_u64() {
+                                format!("Joint {joint}")
+                            } else if !source["value"].is_null() {
+                                source["value"].to_string()
+                            } else {
+                                String::new()
+                            }
+                        } else {
+                            source["displacement"].as_str().unwrap_or("").to_owned()
+                        }
                     ),
                     FontId::proportional(12.),
                     t.text,
@@ -830,7 +874,54 @@ fn graph(app: &SolveApp, ui: &mut egui::Ui, blocks: &[Value], joints: &[Value], 
                 }
                 let port = rect.right_center();
                 source_ports.insert(id, port);
-                painter.circle_filled(port, 5., t.accent);
+                let signal_color = signal_color(source["data_type"].as_str().unwrap_or("real"));
+                let kind = source["kind"].as_str().unwrap_or("motion");
+                if kind == "input" {
+                    painter.circle_filled(port, 5., signal_color);
+                } else {
+                    painter.add(egui::Shape::convex_polygon(
+                        vec![port + vec2(-5., -6.), port + vec2(6., 0.), port + vec2(-5., 6.)],
+                        signal_color,
+                        Stroke::NONE,
+                    ));
+                }
+                let kind = source["kind"].as_str().unwrap_or("motion");
+                if kind != "motion" {
+                    painter.text(
+                        rect.center_bottom() - vec2(0., 8.),
+                        Align2::CENTER_BOTTOM,
+                        format!(
+                            "{} · {} · {}",
+                            app.tr(&format!("ui.signal.{kind}")),
+                            source["data_type"].as_str().unwrap_or("real"),
+                            source["dimension"].as_str().unwrap_or("")
+                        ),
+                        FontId::proportional(11.),
+                        signal_color,
+                    );
+                }
+                if ["input", "output"].contains(&kind) {
+                    let point = rect.left_center();
+                    signal_inputs.insert(id, point);
+                    if kind == "output" {
+                        painter.circle_filled(point, 5., signal_color);
+                    } else {
+                        painter.add(egui::Shape::convex_polygon(
+                            vec![point + vec2(-6., -6.), point + vec2(5., 0.), point + vec2(-6., 6.)],
+                            signal_color,
+                            Stroke::NONE,
+                        ));
+                    }
+                    let response = ui.interact(Rect::from_center_size(point, vec2(18., 18.)), ui.id().with(("signal_input", id)), Sense::click());
+                    node_handle(ui, &format!("mks:port:in:{id}"), point);
+                    if response.clicked() || (draft.diagram.dragging && released_over(ui, response.rect.expand(12.))) {
+                        if let Some(from) = draft.diagram.wire.take() {
+                            draft.diagram.request = Some(("mks.diagram.route".into(), json!({"source":from,"target":id,"replace":true})));
+                            draft.diagram.dragging = false;
+                        }
+                    }
+                }
+
                 let pin = ui.interact(Rect::from_center_size(port, vec2(16., 16.)), ui.id().with(("source_pin", id)), Sense::click_and_drag());
                 node_handle(ui, &format!("mks:independent:out:{id}"), port);
                 if pin.clicked() || pin.drag_started_by(egui::PointerButton::Primary) {
@@ -838,6 +929,16 @@ fn graph(app: &SolveApp, ui: &mut egui::Ui, blocks: &[Value], joints: &[Value], 
                     draft.diagram.wiring = true;
                     draft.diagram.wire = Some(id);
                     draft.diagram.measure = None;
+                }
+            }
+            for (key, node) in &sources {
+                let Some(target) = key.parse::<u64>().ok().and_then(|id| signal_inputs.get(&id).copied()) else { continue };
+                if let Some(from) = node["upstream"].as_u64().and_then(|id| source_ports.get(&id)) {
+                    let color = signal_color(node["data_type"].as_str().unwrap_or("real"));
+                    let path = crate::mks_wire_ui::route_channel(ui, &format!("typed:{key}"), *from, target, &source_obstacles, area, 0);
+                    if !path.is_empty() {
+                        painter.add(egui::Shape::line(path, Stroke::new(1.5, color)));
+                    }
                 }
             }
             let mut joint_obstacles = Vec::new();
@@ -1723,6 +1824,11 @@ fn library(app: &SolveApp, ui: &mut egui::Ui, blocks: &[Value], joints: &[Value]
     let search_field = ui.add(egui::TextEdit::singleline(&mut draft.library).hint_text(app.tr("ui.workspace.search")));
     scenario::publish_handle("mks:library:search", search_field.rect.center());
     ui.small(app.tr("ui.workspace.drop_hint"));
+    ui.horizontal_wrapped(|ui| {
+        for kind in ["real", "integer", "boolean", "vector3"] {
+            ui.colored_label(signal_color(kind), kind);
+        }
+    });
     let search = draft.library.to_lowercase();
     egui::ScrollArea::vertical().show(ui, |ui| {
         for (category, entries) in [
@@ -1730,7 +1836,7 @@ fn library(app: &SolveApp, ui: &mut egui::Ui, blocks: &[Value], joints: &[Value]
             ("joints", vec!["rigid", "revolute", "slider"]),
             ("sources", vec!["independent", "controller", "motion", "cosine", "quintic", "sine"]),
             ("measurements", vec!["sensor", "position_sensor", "velocity_sensor"]),
-            ("outputs", vec!["scope", "force"]),
+            ("outputs", vec!["scope", "force", "signal_input", "signal_output", "signal_link"]),
         ] {
             let entries: Vec<_> = entries
                 .into_iter()
@@ -1832,6 +1938,9 @@ fn insert_kind(draft: &mut Draft, kind: &str, blocks: &[Value]) {
             draft.selected_body = blocks.iter().find(|b| b["grounded"] != true).and_then(|b| b["id"].as_str()).map(str::to_owned);
         }
         "independent" => draft.diagram.new_source(),
+        "signal_input" => draft.diagram.new_port("input"),
+        "signal_output" => draft.diagram.new_port("output"),
+        "signal_link" => draft.diagram.new_port("link"),
         "motion" | "sensor" | "position_sensor" | "velocity_sensor" | "cosine" | "quintic" | "sine" => draft.pending_target = Some(kind.to_owned()),
         "controller" => {
             draft.shared_control = true;

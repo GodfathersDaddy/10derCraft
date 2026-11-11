@@ -97,9 +97,12 @@ pub(super) fn physical_snapshot(s: &Session) -> Result<Value> {
     // Saving an untitled design assigns its filename as title; this is not a physical edit.
     if let Some(map) = source.as_object_mut() {
         map.remove("name");
+        map.remove("visibility");
+        map.remove("appearances");
     }
     if let Some(m) = source.get_mut("metadata").and_then(Value::as_object_mut) {
         m.remove(KEY);
+        m.remove(super::mks_diagram::KEY);
         m.retain(|key, _| !key.starts_with(POSE_PREFIX));
         m.remove(super::worksheet::PRESENTATION);
         m.remove(super::robot::FEM_KEY);
@@ -115,7 +118,7 @@ pub(super) fn physical_snapshot(s: &Session) -> Result<Value> {
     if bytes.len() > 20_000 {
         use sha2::{Digest, Sha256};
         Ok(
-            json!({"document_sha256":format!("{:x}",Sha256::digest(&bytes)),"canonical_json_bytes":bytes.len(),"normalization":"source-v2; excludes title and simulation result keys"}),
+            json!({"document_sha256":format!("{:x}",Sha256::digest(&bytes)),"canonical_json_bytes":bytes.len(),"normalization":"source-v3; excludes display, observers and simulation results"}),
         )
     } else {
         Ok(json!({"document":source}))
@@ -124,7 +127,12 @@ pub(super) fn physical_snapshot(s: &Session) -> Result<Value> {
 pub(super) fn snapshot(s: &Session) -> Result<Value> {
     let physical = physical_snapshot(s)?;
     let bindings = super::fem_rom::bindings(s);
-    if bindings.is_empty() { Ok(physical) } else { Ok(json!({"cad":physical,"flexible_components":bindings})) }
+    let inputs = super::mks_diagram::physical_inputs(s)?;
+    if bindings.is_empty() && inputs.as_object().is_some_and(|v| v.is_empty()) {
+        Ok(physical)
+    } else {
+        Ok(json!({"cad":physical,"flexible_components":bindings,"motion_inputs":inputs}))
+    }
 }
 fn array(v: &Value) -> &[Value] {
     v.as_array().map(Vec::as_slice).unwrap_or(&[])

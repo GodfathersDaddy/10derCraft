@@ -248,6 +248,9 @@ fn interface_form(app: &mut SolveApp, ui: &mut egui::Ui) {
 }
 
 pub fn show_dialogs(app: &mut SolveApp, ctx: &egui::Context) {
+    if app.ui.project_page == "fem" && app.ui.engineering_dialog.as_deref() == Some("fem_rom") {
+        return;
+    }
     let Some(page) = app.ui.engineering_dialog.clone() else { return };
     let title = match page.as_str() {
         "cad_mks" => "CAD → MKS",
@@ -659,51 +662,87 @@ pub fn mks_workspace(app: &mut SolveApp, ui: &mut egui::Ui) {
 /// Compact FEM controls leave the regular, selectable CAD viewport below.
 pub fn fem_ribbon(app: &mut SolveApp, ui: &mut egui::Ui) {
     let host = crate::ui_kit::Container::new(ui.ctx(), crate::ui_kit::Surface::Chrome);
-    host.edge("fem_workspace_ribbon", crate::ui_kit::Edge::Top)
-        .frame(host.edge_frame(Tokens::get().toolbar).inner_margin(Tokens::get().space_8))
-        .show(ui, |ui| {
-            let t = Tokens::get();
-            ui.set_min_height(t.form_button_height + t.space_16);
-            ui.spacing_mut().interact_size.y = t.form_button_height + t.space_8;
-            ui.horizontal_wrapped(|ui| {
-                ui.heading("FEM");
-                let b = ui.button(app.tr("ui.fem_rom.open"));
-                scenario::publish_handle("fem:rom:open", b.rect.center());
-                if b.clicked() {
-                    app.ui.engineering_dialog = Some("fem_rom".into());
+    crate::toolbar::engineering_ribbon(app, ui, "fem", |app, ui| {
+        let labels: Vec<_> =
+            ["model", "conditions", "mesh", "solve", "results", "rom"].iter().map(|v| app.tr(&format!("ui.engineering.{v}")).to_owned()).collect();
+        let (tab, changed) = crate::toolbar::engineering_tabs(ui, "fem", &labels);
+        if changed {
+            let results = tab == 4;
+            ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new(("fem_results_visible", app.docs.active)), results));
+            app.ui.engineering_dialog = if results { None } else { Some("fem_rom".into()) };
+        }
+        egui::ScrollArea::horizontal().id_salt("fem_ribbon_scroll").show(ui, |ui| {
+            ui.horizontal(|ui| {
+                let action = crate::toolbar::engineering_action(
+                    ui,
+                    "component",
+                    app.tr("ui.fem_rom.open"),
+                    app.ui.engineering_dialog.as_deref() == Some("fem_rom"),
+                );
+                scenario::publish_handle("fem:rom:open", action.rect.center());
+                if action.clicked() {
+                    app.ui.engineering_dialog = if app.ui.engineering_dialog.as_deref() == Some("fem_rom") { None } else { Some("fem_rom".into()) };
                 }
-                let mut preview = app.session.studio.interface_preview;
-                let r = ui.checkbox(&mut preview, app.tr("ui.fem_rom.interfaces"));
-                scenario::publish_handle("fem:interfaces:toggle", r.rect.center());
-                if r.changed() {
-                    let _ = app.run("mks.interface.display", json!({"enabled":preview}));
+                ui.separator();
+                let preview = app.session.studio.interface_preview;
+                let action = crate::toolbar::engineering_action(ui, "joint", app.tr("ui.fem_rom.interfaces"), preview);
+                scenario::publish_handle("fem:interfaces:toggle", action.rect.center());
+                if action.clicked() {
+                    let _ = app.run("mks.interface.display", json!({"enabled":!preview}));
                 }
-                if crate::ui_kit::button(ui, app.tr("ui.analysis.interfaces"), crate::ui_kit::Button::Normal).clicked() {
+                if crate::toolbar::engineering_action(ui, "select", app.tr("ui.analysis.interfaces"), false).clicked() {
                     app.ui.engineering_dialog = Some("cad_mks".into());
                 }
-                let run = ui.add_enabled(
-                    app.session.doc.metadata.get("org.solidcraft.robot-workflow").is_some(),
-                    egui::Button::new(app.tr("ui.fem_rom.beam")),
-                );
+                ui.separator();
+                let run = crate::toolbar::engineering_action(ui, "drive", app.tr("ui.engineering.solve"), false);
                 scenario::publish_handle("fem:workspace:solve", run.rect.center());
                 if run.clicked() {
-                    crate::fem_rom_ui::select_beam(app, ui.ctx());
-                    let _ = app.run("robot.fem.solve", json!({"elements":16}));
+                    let ctx = ui.ctx().clone();
+                    crate::fem_rom_ui::request_solve(app, &ctx);
                 }
-                let results = crate::ui_kit::button(ui, app.tr("ui.analysis.results"), crate::ui_kit::Button::Normal);
+                if tab == 5 {
+                    let bind = crate::toolbar::engineering_action(ui, "joint", app.tr("ui.engineering.bind"), false);
+                    scenario::publish_handle("fem:workspace:bind", bind.rect.center());
+                    if bind.clicked() {
+                        if let Some(id) = crate::fem_rom_ui::selected(app, ui.ctx()) {
+                            let _ = app.run("fem.mks.bind", json!({"id":id,"enabled":true}));
+                        }
+                    }
+                }
+                if tab == 3 && app.session.doc.metadata.get("org.solidcraft.robot-workflow").is_some() {
+                    let beam = crate::toolbar::engineering_action(ui, "measure", app.tr("ui.fem_rom.beam"), false);
+                    scenario::publish_handle("fem:workspace:beam", beam.rect.center());
+                    if beam.clicked() {
+                        crate::fem_rom_ui::select_beam(app, ui.ctx());
+                        let _ = app.run("robot.fem.solve", json!({"elements":16}));
+                    }
+                }
+                let results = crate::toolbar::engineering_action(ui, "graph", app.tr("ui.analysis.results"), tab == 4);
                 scenario::publish_handle("fem:workspace:results", results.rect.center());
                 if results.clicked() {
-                    let key = egui::Id::new(("fem_results_visible", app.docs.active));
-                    ui.ctx().data_mut(|d| d.insert_temp(key, true));
+                    ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new(("fem_results_visible", app.docs.active)), true));
                 }
-                let setup = crate::ui_kit::button(ui, app.tr("ui.analysis.setup"), crate::ui_kit::Button::Normal);
+                let setup = crate::toolbar::engineering_action(ui, "component", app.tr("ui.analysis.setup"), false);
                 scenario::publish_handle("fem:workspace:setup", setup.rect.center());
                 if setup.clicked() {
-                    let key = egui::Id::new(("fem_results_visible", app.docs.active));
-                    ui.ctx().data_mut(|d| d.insert_temp(key, false));
+                    ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new(("fem_results_visible", app.docs.active)), false));
                 }
             });
         });
+    });
+    if app.ui.engineering_dialog.as_deref() == Some("fem_rom") {
+        host.edge("fem_inspector", crate::ui_kit::Edge::Right)
+            .size_range(320. ..=520.)
+            .default_size(420.)
+            .resizable(true)
+            .frame(host.edge_frame(Tokens::get().toolbar).inner_margin(Tokens::get().space_8))
+            .show(ui, |ui| {
+                if ui.button(app.tr("ui.engineering.close")).clicked() {
+                    app.ui.engineering_dialog = None;
+                }
+                crate::fem_rom_ui::show_docked(app, ui);
+            });
+    }
 }
 
 #[cfg(test)]

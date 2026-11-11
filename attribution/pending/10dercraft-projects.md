@@ -22,3 +22,5 @@
 | examples/media/Pendel-Simulation.avi | 10derCraft contributors | Original parametric research example / native simulation export | MIT OR Apache-2.0 |
 | examples/media/Roboter-Grosse-Bewegung-30fps.avi | 10derCraft contributors | Original parametric research example / native simulation export | MIT OR Apache-2.0 |
 | examples/media/Roboter-Simulation.avi | 10derCraft contributors | Original parametric research example / native simulation export | MIT OR Apache-2.0 |
+
+| examples/projects/Pendel-Signalports.solidcraft | 10derCraft contributors | Original native typed-signal example | MIT OR Apache-2.0 |

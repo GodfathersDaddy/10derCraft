@@ -1,8 +1,13 @@
 [
   {
+    "path": "examples/projects/Roboter-Rohr-Schweissbaugruppe-ROM-MKS.solidcraft",
+    "sha256": "eca5aa422cb00bd9b3ca54afb1c9ec8ac9133ea2730f83eeec7f459a0157f3aa",
+    "bytes": 3874424
+  },
+  {
     "path": "examples/projects/Roboter-8kg-Schultergabel-ROM-MKS.solidcraft",
-    "sha256": "b8fc30aba10f25b5feb2dcc13250e98e1a66feb4c1bfb652eeba9c0643b5c187",
-    "bytes": 4031906
+    "sha256": "c22fc936fad9fb31abf64cdb9e127ee8fb6939760f7bf77087ba5966011b09fa",
+    "bytes": 3812924
   },
   {
     "path": "examples/projects/Roboter-8kg-Statisch-vorgespannt.solidcraft",
@@ -138,5 +143,10 @@
     "path": "examples/projects/A2-Servomotor-Montage.solidcraft",
     "sha256": "eda0388beaadebb8da635066f12f3a13005b0ea45e898fb6e228a6e8271d6415",
     "bytes": 243169
+  },
+  {
+    "path": "examples/projects/Pendel-Signalports.solidcraft",
+    "sha256": "a66fb028e83fd541f79fab6197155b3c93636e62f4fcb4ae46422d59d55d02db",
+    "bytes": 27880
   }
 ]

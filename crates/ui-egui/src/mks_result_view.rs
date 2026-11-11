@@ -2,16 +2,33 @@
 use crate::{SolveApp, scenario, theme::Tokens};
 use serde_json::json;
 use solidcraft_engine::{
-    geom::Aabb3,
+    geom::{Aabb3, Vec3},
     render::{Camera, Rgb, Scene},
 };
 use std::sync::Arc;
 
 fn fit_preview(camera: &mut Camera, bounds: &Aabb3, width: f32, height: f32) {
     camera.fit(bounds);
-    // Camera::fit frames the vertical extent. A narrow simulation panel must
-    // leave the same margin horizontally, while retaining the shared camera.
-    camera.distance *= f64::from((height.max(1.) / width.max(1.)).max(1.));
+    if bounds.is_empty() {
+        return;
+    }
+    // Fit the projected corners to this panel instead of enlarging a bounding
+    // sphere again by the panel aspect ratio. Include depth for perspective.
+    let aspect = f64::from(width.max(1.) / height.max(1.));
+    let (right, up, back) = camera.basis();
+    let slope = if camera.fov > 0. { (camera.fov * 0.5).tan() } else { 0.4 };
+    let mut distance: f64 = 1.;
+    for x in [bounds.min.x, bounds.max.x] {
+        for y in [bounds.min.y, bounds.max.y] {
+            for z in [bounds.min.z, bounds.max.z] {
+                let offset = Vec3::new(x, y, z) - camera.target;
+                let extent = (offset.dot(right).abs() / aspect).max(offset.dot(up).abs());
+                let depth = if camera.fov > 0. { offset.dot(back) } else { 0. };
+                distance = distance.max(depth + extent * 1.1 / slope);
+            }
+        }
+    }
+    camera.distance = distance;
 }
 
 #[derive(Clone)]
@@ -159,46 +176,95 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context, sample: usize, open: &mut b
 }
 
 /// Embedded playback for the MKS graph; explicit playback never opens a second window.
-fn inline_cpu(app: &mut SolveApp, ui: &mut egui::Ui, sample: usize) {
-    type Image = (u64, usize, Camera, egui::TextureHandle, Aabb3);
-    let key = egui::Id::new(("mks_inline", app.docs.active, app.session.path.clone()));
+fn inline_cpu(app: &mut SolveApp, ui: &mut egui::Ui, sample: usize, time: f64) {
+    type Image = (u64, u64, u64, Camera, egui::TextureHandle, Aabb3);
+    let key = egui::Id::new(("mks_inline_cpu", app.docs.active, app.session.path.clone()));
+    let cached_data = ui.ctx().data(|d| d.get_temp::<(u64, Arc<solidcraft_engine::cmd::AssemblyReplay>)>(key.with("data")));
+    let data = match cached_data {
+        Some((revision, data)) if revision == app.session.revision => data,
+        _ => match solidcraft_engine::cmd::prepare_assembly_replay(&mut app.session) {
+            Ok(data) => {
+                let data = Arc::new(data);
+                ui.ctx().data_mut(|d| d.insert_temp(key.with("data"), (app.session.revision, data.clone())));
+                data
+            }
+            Err(error) => {
+                ui.colored_label(Tokens::get().warning, error.to_string());
+                return;
+            }
+        },
+    };
+    let magnification = elastic_controls(app, ui, &data, key);
     let mut cached = ui.ctx().data(|d| d.get_temp::<Image>(key));
     let width = ui.available_width().max(120.);
     let height = ui.available_height().max(160.);
-    let scale = (1000. / width).min(800. / height).min(1.5);
-    let pixels = [(width * scale).round().max(1.) as usize, (height * scale).round().max(1.) as usize];
     let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click_and_drag());
     crate::navigation::handle(app, ui, rect, &response, crate::navigation::NavCaps { orbit: true, pick: false });
-    if response.double_clicked_by(egui::PointerButton::Middle)
-        && let Some((_, _, _, _, bounds)) = &cached
-    {
-        fit_preview(&mut app.cam, bounds, width, height);
+    if cached.is_none() || response.double_clicked_by(egui::PointerButton::Middle) {
+        fit_preview(&mut app.cam, &data.bounds, width, height);
     }
-    if !cached.as_ref().is_some_and(|v| v.0 == app.session.revision && v.1 == sample && v.2 == app.cam && v.3.size() == pixels) {
-        match scene(app, sample) {
-            Ok((scene, bounds)) => {
-                if cached.is_none() {
-                    fit_preview(&mut app.cam, &bounds, width, height);
-                }
-                let image = solidcraft_engine::render::render(&scene, &app.cam, pixels[0], pixels[1]);
-                let pixels = egui::ColorImage::from_rgba_unmultiplied([image.w, image.h], &image.rgba);
-                let texture = ui.ctx().load_texture("mks-inline", pixels, egui::TextureOptions::LINEAR);
-                cached = Some((app.session.revision, sample, app.cam, texture, bounds));
-                if let Some(v) = &cached {
-                    ui.ctx().data_mut(|d| d.insert_temp(key, v.clone()));
-                }
+    let current =
+        cached.as_ref().is_some_and(|c| c.0 == app.session.revision && c.1 == time.to_bits() && c.2 == magnification.to_bits() && c.3 == app.cam);
+    if !current {
+        let tokens = Tokens::get();
+        let mut scene = Scene {
+            radius: data.bounds.diagonal().max(1.),
+            background: Some((Rgb(tokens.field.r(), tokens.field.g(), tokens.field.b()), Rgb(tokens.field.r(), tokens.field.g(), tokens.field.b()))),
+            ..Default::default()
+        };
+        for (index, (source, world)) in data.meshes.iter().zip(data.worlds(time)).enumerate() {
+            let mut mesh = data.elastic_mesh(index, time).unwrap_or_else(|| (*source.mesh).clone());
+            for p in &mut mesh.positions {
+                *p = solidcraft_engine::doc::apply_point(&world, *p);
             }
-            Err(e) => {
-                ui.colored_label(Tokens::get().warning, e);
-                return;
+            for n in &mut mesh.normals {
+                *n = solidcraft_engine::doc::apply_vector(&world, *n);
             }
+            scene.meshes.push(solidcraft_engine::render::SceneMesh {
+                mesh: Arc::new(mesh),
+                color: source.color,
+                face_colors: Default::default(),
+                opacity: 1.,
+            });
         }
+        for points in data.elastic_lines(time, magnification) {
+            scene.lines.push(solidcraft_engine::render::SceneLine {
+                points: points.to_vec(),
+                color: Rgb(tokens.axis_z.r(), tokens.axis_z.g(), tokens.axis_z.b()),
+                alpha: 1.,
+                width: 1.,
+                on_top: true,
+            });
+        }
+        let resolution = (1000. / width).min(800. / height).min(1.5);
+        let pixels = [(width * resolution).round().max(1.) as usize, (height * resolution).round().max(1.) as usize];
+        let picture = solidcraft_engine::render::render(&scene, &app.cam, pixels[0], pixels[1]);
+        let image = egui::ColorImage::from_rgba_unmultiplied(pixels, &picture.rgba);
+        let texture = ui.ctx().load_texture("mks_cpu_replay", image, egui::TextureOptions::LINEAR);
+        cached = Some((app.session.revision, time.to_bits(), magnification.to_bits(), app.cam, texture, data.bounds));
+        ui.ctx().data_mut(|d| d.insert_temp(key, cached.clone()));
     }
-    if let Some((_, _, _, texture, _)) = cached {
+    if let Some((_, _, _, _, texture, _)) = cached {
         ui.painter().image(texture.id(), rect, egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1., 1.)), egui::Color32::WHITE);
-        scenario::publish_handle("mks:inline:canvas", rect.center());
-        scenario::publish_handle(&format!("mks:inline:frame:{sample}"), rect.center());
     }
+    scenario::publish_handle("mks:inline:canvas", rect.center());
+    scenario::publish_handle(&format!("mks:inline:frame:{sample}"), rect.center());
+}
+fn elastic_controls(app: &SolveApp, ui: &mut egui::Ui, data: &solidcraft_engine::cmd::AssemblyReplay, key: egui::Id) -> f64 {
+    let mut magnification = ui.ctx().data(|d| d.get_temp::<f64>(key.with("elastic_scale"))).unwrap_or(200.);
+    if data.has_elastic() {
+        ui.horizontal_wrapped(|ui| {
+            ui.label(app.tr("ui.weld.mks_scale"));
+            let value = ui.add(egui::DragValue::new(&mut magnification).range(1. ..=10000.).speed(10.));
+            scenario::publish_handle("mks:rom:scale", value.rect.center());
+            if ui.button("1×").clicked() {
+                magnification = 1.;
+            }
+        });
+        ui.small(app.tr("ui.weld.mks_note"));
+        ui.ctx().data_mut(|d| d.insert_temp(key.with("elastic_scale"), magnification));
+    }
+    magnification
 }
 
 #[derive(Clone)]
@@ -212,13 +278,14 @@ struct LiveReplay {
     generation: u64,
     tick: u64,
     last_time: f64,
+    last_scale: f64,
     frames: u64,
 }
 /// The CAD GPU pipeline keeps each mesh uploaded. A playback tick uploads only
 /// rigid placements and the few interface axes, never re-tessellates the CAD.
 pub fn inline(app: &mut SolveApp, ui: &mut egui::Ui, sample: usize, time: f64) -> bool {
     if app.viewport.gpu.is_none() {
-        inline_cpu(app, ui, sample);
+        inline_cpu(app, ui, sample, time);
         return false;
     }
     let key = egui::Id::new(("mks_live_replay", app.docs.active, app.session.path.clone()));
@@ -253,6 +320,7 @@ pub fn inline(app: &mut SolveApp, ui: &mut egui::Ui, sample: usize, time: f64) -
                     generation,
                     tick: 0,
                     last_time: f64::NEG_INFINITY,
+                    last_scale: f64::NEG_INFINITY,
                     frames: 0,
                 });
             }
@@ -263,13 +331,18 @@ pub fn inline(app: &mut SolveApp, ui: &mut egui::Ui, sample: usize, time: f64) -
         }
     }
     let Some(mut cache) = cache else { return false };
-    if time != cache.last_time {
+    let magnification = elastic_controls(app, ui, &cache.data, key);
+    if time != cache.last_time || magnification != cache.last_scale {
         let mut geometry = (*cache.geometry).clone();
         for (index, ((mesh, world), color)) in geometry.instanced.iter_mut().zip(cache.data.worlds(time)).zip(cache.colors.iter()).enumerate() {
             if let Some(deformed) = cache.data.elastic_mesh(index, time) {
                 mesh.tris = Arc::new(crate::gpu::SharedTris::new(&deformed));
             }
             mesh.place(std::array::from_fn(|r| std::array::from_fn(|c| world[c][r] as f32)), *color);
+        }
+        let color = geometry.color(Tokens::get().axis_z.to_array());
+        for [a, b] in cache.data.elastic_lines(time, magnification) {
+            geometry.line(a.to_f32(), b.to_f32(), color, 1., true);
         }
         let deltas = cache.data.deltas(time);
         let length = (cache.data.bounds.diagonal() * 0.025).max(5.);
@@ -287,6 +360,7 @@ pub fn inline(app: &mut SolveApp, ui: &mut egui::Ui, sample: usize, time: f64) -
             *slot = Some(geometry);
         }
         cache.last_time = time;
+        cache.last_scale = magnification;
         cache.tick = cache.tick.wrapping_add(1);
         cache.frames += 1;
     }

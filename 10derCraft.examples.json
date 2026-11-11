@@ -2,10 +2,16 @@
   "schema": "10dercraft.examples/1",
   "examples": [
     {
+      "id": "robot-tube-weldment-8kg",
+      "title": "Roboter 8 kg - Rohrbaugruppe mit sichtbarer ROM-Durchbiegung",
+      "path": "examples/projects/Roboter-Rohr-Schweissbaugruppe-ROM-MKS.solidcraft",
+      "description": "Ganze Rohre, ausgesparte Gelenkgehäuse, zwei berechnete ROMs und flexible Sechsachsbewegung. Idealisierte starre Anschluss- und Schweißkopplung."
+    },
+    {
       "id": "robot-shoulder-yoke-8kg",
       "title": "Roboter 8 kg - Schultergabel und flexible MKS",
       "path": "examples/projects/Roboter-8kg-Schultergabel-ROM-MKS.solidcraft",
-      "description": "Drei parametrische Schulterplatten, 40 native Normteile, zwei Rohr-ROMs und berechnete vorgespannte Sechsachsbewegung. Lager-/Getriebeauslegung offen."
+      "description": "CAD-Werkstoffübernahme, adaptives Oberarmnetz, zwei ROMs und berechnete vorgespannte Sechsachsbewegung. Netzbudget mit offenem Fehlerziel wird angezeigt."
     },
     {
       "id": "robot-preloaded-8kg",
@@ -168,6 +174,12 @@
       "title": "Suite-Varianten",
       "path": "examples/projects/Suite-Varianten.solidcraft",
       "description": "Gemeinsames Variantenmanagement"
+    },
+    {
+      "id": "pendulum-signal-ports",
+      "title": "Pendel mit typisierten Signalports",
+      "path": "examples/projects/Pendel-Signalports.solidcraft",
+      "description": "Native Eingangs- und Ausgangsports, benannte Links, Kraftsensor, Boolean und Integer."
     }
   ]
 }

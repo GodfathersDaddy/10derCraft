@@ -42,6 +42,15 @@ pub static COMMANDS: &[CommandSpec] =
 pub(super) fn valid(profile: &str) -> bool {
     ["cosine", "quintic", "sine"].contains(&profile)
 }
+pub(super) fn value_at(profile: &str, t: f64, ramp: f64, frequency: f64) -> f64 {
+    let u = (t / ramp).clamp(0., 1.);
+    let smooth = u * u * u * (10. + u * (-15. + 6. * u));
+    match profile {
+        "quintic" => smooth,
+        "sine" => smooth * (2. * std::f64::consts::PI * frequency * t).sin(),
+        _ => 0.5 * (1. - (std::f64::consts::PI * u).cos()),
+    }
+}
 fn sample(_: &mut Session, p: &Value) -> Result<Value> {
     let p: Params = serde_json::from_value(p.clone()).map_err(|e| bad("mks.signal.sample", e.to_string()))?;
     if !valid(&p.profile)

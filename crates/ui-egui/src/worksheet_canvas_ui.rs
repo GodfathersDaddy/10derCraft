@@ -46,8 +46,15 @@ pub(super) fn show(app: &mut SolveApp, ui: &mut egui::Ui) -> bool {
     sheet.inline.begin(&snapshot);
     sheet.inline.digits = layout["significant_digits"].as_u64().filter(|v| (2..=16).contains(v)).unwrap_or(sheet.inline.digits as u64) as usize;
     let host = crate::ui_kit::Container::new(ui.ctx(), crate::ui_kit::Surface::Chrome);
-    host.edge("worksheet_ribbon", crate::ui_kit::Edge::Top).frame(host.edge_frame(Tokens::get().toolbar).inner_margin(8.)).show(ui, |ui| {
-        ui.set_min_height(58.);
+    crate::toolbar::engineering_ribbon(app, ui, "parameters", |app, ui| {
+        let labels: Vec<_> =
+            ["calculation", "symbols", "library", "document"].iter().map(|v| app.tr(&format!("ui.engineering.{v}")).to_owned()).collect();
+        let (tab, changed) = crate::toolbar::engineering_tabs(ui, "parameters", &labels);
+        if changed {
+            sheet.symbols_open = tab == 1;
+            sheet.library_open = tab == 2;
+        }
+        ui.set_min_height(72.);
         ui.style_mut().always_scroll_the_only_direction = true;
         egui::ScrollArea::horizontal()
             .id_salt("worksheet_ribbon_scroll")

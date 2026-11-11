@@ -413,7 +413,38 @@ impl AssemblyReplay {
     }
     /// Bounded CPU reconstruction of the FE surface; rigid CAD meshes remain
     /// uploaded once. Interpolation changes the view, never solver histories.
+    /// Shared display overlay for native GPU and CPU viewers.
+    pub fn elastic_lines(&self, time: f64, scale: f64) -> Vec<[Vec3; 2]> {
+        let mut lines = Vec::new();
+        if scale <= 1. {
+            return lines;
+        }
+        for (index, world) in self.worlds(time).iter().enumerate() {
+            if let Some(mesh) = self.elastic_mesh_scaled(index, time, scale) {
+                let mut edges = std::collections::BTreeSet::new();
+                for t in &mesh.triangles {
+                    for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
+                        edges.insert((a.min(b), a.max(b)));
+                    }
+                }
+                for (a, b) in edges {
+                    lines.push([apply_point(world, mesh.positions[a as usize]), apply_point(world, mesh.positions[b as usize])]);
+                }
+            }
+        }
+        lines
+    }
+    pub fn has_elastic(&self) -> bool {
+        !self.elastic.is_empty()
+    }
     pub fn elastic_mesh(&self, index: usize, time: f64) -> Option<Mesh> {
+        self.elastic_mesh_scaled(index, time, 1.)
+    }
+    /// Display magnification only. Solver states and physical replay remain in SI.
+    pub fn elastic_mesh_scaled(&self, index: usize, time: f64, scale: f64) -> Option<Mesh> {
+        if !scale.is_finite() || !(0. ..=10000.).contains(&scale) {
+            return None;
+        }
         let source = self.meshes.get(index)?;
         let elastic = self.elastic.get(&source.block)?;
         if source.attachment.is_some() || source.source != elastic.source {
@@ -426,7 +457,7 @@ impl AssemblyReplay {
         let values: Vec<_> = elastic.basis.iter().map(|row| row.iter().zip(&q).map(|(v, q)| v * q).sum::<f64>() * 1000.).collect();
         let mut mesh = (*source.mesh).clone();
         for (p, v) in mesh.positions.iter_mut().zip(values.as_chunks::<3>().0) {
-            *p += Vec3::new(v[0], v[1], v[2]);
+            *p += Vec3::new(v[0], v[1], v[2]) * scale;
         }
         mesh.normals = vec![Vec3::ZERO; mesh.positions.len()];
         for t in &mesh.triangles {

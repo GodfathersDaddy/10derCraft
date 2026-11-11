@@ -2077,3 +2077,50 @@ Weitere Implementierungsbefunde. Automatisches Schraubensetzen auf bereits platz
 Abschluss dieses Entwicklungsschritts. Die doppelte Koordinatenumrechnung beim automatischen Normteilsetzen ist korrigiert. Ein normales M10-Einsetzen auf einer bereits platzierten Scheibe gelingt mit gemessener Spitze z = 215 mm und Kopfoberseite z = 275 mm. Die MKS-Vorschau und Ergebnisexporte verarbeiten jetzt begrenzt 250.000 Dreiecke und insgesamt 500.000 Vertices einschließlich flexibler Flächen. Der detaillierte Roboter wurde damit im MKS abgespielt und als natives AVI mit 241 Bildern bei 30 FPS exportiert. CAD-, MKS- und dynamische FEM-Ansichten wurden aufgenommen. Die FEM-Darstellung verwendet 300-fache Überhöhung. Die Source-Rechnung bleibt maßstäblich unverändert.
 
 Eine Syntaxprüfung fand einen eingerückten Importfehler im Starrkörper-Worker nach der gemeinsamen Bewegungsfunktion-Umstellung. Der Import ist korrigiert. Alle vier Python-Dateien lassen sich syntaktisch einlesen. Das vorhandene native Pendel wurde anschließend sowohl frei als auch mit vorgegebener Quintik-Bewegung über den normalen Starrkörperpfad berechnet. Build und statische Listenprüfung sind erfolgreich. Der ergänzte Regressionsfall für Normteilsitze wurde nicht automatisiert ausgeführt. Breite Tests und CI bleiben pausiert.
+
+
+## 2026-11-06 — Gemeinsame Menüstruktur, adaptive FEM und MKS-Signalports
+
+Die CAD-Menükomponente wird nun auch in Parameter, FEM und MKS verwendet. FEM-Einstellungen sind rechts angedockt, lange Baugruppennamen gekürzt und Felder an die Leistenbreite angepasst. Ergebnisansichten schließen die Eigenschaftenleiste. Sichtprüfung hat die zuvor ungewollt bildschirmfüllende Leiste erkannt und korrigiert.
+
+FEM übernimmt auf Wunsch den CAD-Werkstoff einschließlich Elastizität und Dichte. Allgemeine Stahl-/Aluminiumvorgaben sind illustrative Werte. Vorhandene explizite FEM-Materialwerte bleiben kompatibel. Referenzanschlüsse, statische Kraftvektoren, unverformte Kontur, automatische Anzeigeüberhöhung und statische beziehungsweise echte ROM-Zeitreihenanimation wurden ergänzt.
+
+Die adaptive Methode verwendet volumengewichtete Spannungsrekonstruktion, einen nachgiebigkeitsgewichteten Fehlerindikator und konforme gemeinsame Kantenhalbierung. Tatsächlicher Oberarmlauf mit einem Verfeinerungsschritt ergab 720 auf 801 quadratische Knoten und 288 auf 345 Elemente. Der Indikator sank von 0,29493346 auf 0,29037802. Ziel 0,10 wurde im gewählten Budget nicht erreicht und wird ausdrücklich als offen angezeigt. Das Ergebnis ist keine garantierte Fehlerschranke.
+
+Ein Übergabefehler zwischen verfeinertem ROM und ursprünglichem Anfangsnetz der flexiblen MKS wurde durch den vollständigen Roboterdurchlauf gefunden. Der FEM-Worker speichert das endgültige Netz. Die MKS assembliert genau dieses Netz und prüft weiterhin Massen- und Steifigkeitsprojektion gegen das ROM.
+
+Die native Roboterkette mit zwei ROMs wurde erfolgreich neu berechnet. Acht Sekunden, 4.000 Integrationsschritte und 501 Ausgabepunkte. Maximale elastische Verschiebung im MKS-Lauf 0,13329842 mm am Oberarm und 0,07595279 mm am Unterarm. Statischer 100-N-Referenzfall 0,00556421 beziehungsweise 0,01198602 mm. Diese Lastfälle sind getrennt zu interpretieren.
+
+Native gespeicherte MKS-Ports besitzen Richtung, Datentyp, physikalische Größe, Quelle und optionalen Linknamen. Bewegungsquelle → Eingangsport → Ausgangsport → benannter Link → Pendelgelenk wurde tatsächlich simuliert. Gelenkkraftsensor bei 0,5 s lieferte lokal [68,99483156; 0,00223137; 0] N. Boolean true und Integer 12 wurden unverändert übertragen. Typverletzung und zyklische Verbindung wurden ohne Änderung des gültigen Graphen zurückgewiesen. Hinzufügen eines Beobachters und erneutes Verbinden über die Maus erhalten die Gültigkeit vorhandener Ergebnisse.
+
+Reelle Kraft-/Momentsensoren liefern die erste lokale Komponente, Dreiervektoren alle drei Komponenten. Konstante und Sensorsignale sind auslesbar. Gelenkantriebe benötigen eine Bewegungsquelle. Eine geschlossene Sensor-Regelschleife ist noch nicht Bestandteil dieser Erweiterung. Automatische Volumennetze bleiben auf unterstützte primitive Körper und importierte konforme Tetraedernetze begrenzt.
+
+Native Desktop- und CLI-Builds erfolgreich. Katalogsortierung erfolgreich. Normale Solverrechnungen und gezielte sichtbare Bedienprüfungen ausgeführt. Breite Tests und vollständige CI bleiben auf Nutzeranweisung pausiert. Belege unter docs/10dercraft/evidence/engineering-workflow, Bedienung unter docs/10dercraft/FEM_MKS_BEDIENUNG.md. Lokale Originalaufnahmen unter output/engineering-workflow-ui.
+
+Methodische Quellen. Zienkiewicz und Zhu, https://doi.org/10.1002/nme.1620240206. MFEM-Dokumentation, https://docs.mfem.org/html/classmfem_1_1ZienkiewiczZhuEstimator.html. Keine fremde Implementierung übernommen.
+
+Abschluss der sichtbaren Bedienprüfung. Auch statische Verformungsanimation und Kameraorbit erfolgreich. Kraftpfeile werden zusätzlich kontrastreich auf die Ergebnisansicht projiziert. Installierter Desktop-SHA256 ce39611d347a1eba3ca4a1d0d9922ed415de09597f24756b7ac02f8944af7f9a. Bestehender Start-10derCraft.cmd verweist auf diese Version.
+
+
+## 2026-11-09 – Rohrbaugruppe und sichtbare flexible MKS
+
+Die Nutzerkorrektur ersetzt den zwischenzeitlichen Halbschalenentwurf durch ganze Oberarm- und Unterarmrohre mit separaten Gelenkgehäusen. Silberne Rohre und blaue Gelenkabdeckungen orientieren sich gestalterisch am bereitgestellten Referenzbild. Überlappende Rückenverstärkungen wurden entfernt. Native Subtraktionsfeatures erzeugen die Anschlussaussparungen in den Gehäusen. Die beiden Split-Features bleiben unterdrückt und im Verlauf nachvollziehbar.
+
+Das neue Beispiel heißt `Roboter-Rohr-Schweissbaugruppe-ROM-MKS.solidcraft`. Beide Rohr-ROMs wurden neu berechnet und an die bestehenden sechs Gelenke angebunden. Die erfolgreiche achtsekündige Bewegung verwendet 4000 Integrationsschritte und 501 gespeicherte Zeitpunkte mit statischem Gleichgewichtsstart. Die maximalen elastischen Verschiebungen betragen 0,128664 mm am Oberarm und 0,075984 mm am Unterarm. Die blaue FE-Überlagerung im MKS besitzt einen einstellbaren Darstellungsfaktor. Die physische Geometrie und die berechneten Kräfte behalten den tatsächlichen Maßstab.
+
+Für die Massenintegration fehlende Tessellierungsfacetten werden ausschließlich bei gültigen nativen B-reps, unter begrenzten Flächen- und Toleranzprüfungen ergänzt. Geschlossene orientierte Integrationsnetze und die Zweiauflösungsprüfung bleiben erforderlich. Nur A3-Ellbogen benötigt im veröffentlichten Beispiel diese Ergänzung. Eine unabhängige deterministische Sobol-Volumenintegration mit 1048576 Punkten ergab 12,213779 kg gegenüber nativ 12,213362 kg, entsprechend 0,00342 Prozent relativer Differenz. Diese Übereinstimmung ist eine numerische Vergleichsprüfung.
+
+Die FEM-Ergebnisbedienung liegt nun in einer rechten Seitenleiste neben der großen drehbaren Modellansicht. Die MKS-Kamera berücksichtigt die projizierten Grenzen und das tatsächliche Seitenverhältnis des Vorschaufensters.
+
+Nachweise liegen unter `output/robot-weldment/tube-workflow-results.json`, `tube-mass.json`, `elbow-mass-comparison.json` und `output/robot-tube-capture/`. Es wurden gezielte echte Berechnungen und native Bedienprüfungen durchgeführt. Breite Tests und CI bleiben auf Nutzerwunsch pausiert.
+
+Offene konstruktive Nachweise sind Schweißnahtauslegung, Wärmeeinflusszone, Ermüdung, vollständige Bewegungskollisionsprüfung sowie abschließende Lager- und Getriebedimensionierung. Die FEM behandelt die Rohre elastisch und die Anschlussgehäuse beziehungsweise Anbauteile als ideal gekoppelte starre Teile. Das Beispiel dokumentiert einen Simulationsentwurf und keine freigegebene Fertigungszeichnung.
+
+
+### 2026-11-09 – erneuter ROM-MKS-Prüflauf auf Nutzerwunsch
+
+Die aktuelle gespeicherte Rohrbaugruppe wurde über `mks.job.run` mit `recompute=true` erneut nativ durchgerechnet. Exudyn 1.13.6 meldet Erfolg. Der Lauf enthält acht Sekunden, 4000 Integrationsschritte und 501 gespeicherte Zeitpunkte. Beide modalen Zeitreihen besitzen eine nachgewiesene zeitliche Änderung und ausschließlich endliche Werte. Maximale elastische Verschiebungen sind 0,128663695 mm und 0,075984048 mm. Alle sechs Gelenkkräfte wurden ausgewertet. Der maximale translatorische Zwangsfehler beträgt 1,9341e-9 m. Die gesamte Solverzeit beträgt 87,43 s, zusätzlich zur CAD-Aufbereitung.
+
+Gespeichert wurden der neu berechnete Modellstand, vollständige Ergebnisse, Prüfzusammenfassung und Gelenkkraftdiagramm unter `output/robot-rom-mks-validation/`. Der native AVI-Export enthält 241 Frames bei 30 fps. Eine MP4-Fassung wurde daraus kodiert. Der Export zeigt physikalisch skalierte elastische Geometrie. Für sichtbar überhöhte Verformungen steht in der interaktiven MKS-Ansicht die FE-Überlagerung zur Verfügung.
+
+Die beiden anfänglichen Desktop-Prüfstarts antworteten innerhalb der eingeschränkten Ausführungsumgebung nicht. Der erfolgreiche native Befehlslauf erfolgte außerhalb dieser Einschränkung. Die Solverdiagnose enthält zwei Exudyn-Abkündigungswarnungen für `rotationMarker0/1`, ohne Rechenabbruch. Die vorhandenen Modellannahmen bleiben kleine elastische Verformungen, ideal starre Anschlussflächen und einprozentige modale Dämpfung. Kontakt und Schweißnahtfestigkeit sind hier nicht nachgewiesen.

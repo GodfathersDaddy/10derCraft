@@ -87,7 +87,13 @@ pub(super) fn execute(job: &Value) -> Result<Value> {
         bytes
     });
     let start = Instant::now();
-    let timeout_s = if flexible { 180 } else { 30 };
+    let timeout_s = if flexible {
+        180
+    } else if fem && job["adaptive"].is_object() {
+        120
+    } else {
+        30
+    };
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break Some(status),

@@ -135,6 +135,23 @@ fn inspect(s: &mut Session, p: &Value) -> Result<Value> {
             .ok_or_else(|| bad(cmd, "material is unavailable"))?;
         json!({"name":canonical,"density_g_cm3":density,"user":false})
     };
+    let generic = match canonical.as_str() {
+        "Steel" => Some((210000., 0.3)),
+        "Aluminum" => Some((70000., 0.33)),
+        _ => None,
+    };
+    if let Some((young, poisson)) = generic {
+        out["isotropic_elasticity"] = json!({"young_mpa":young,"poisson_ratio":poisson,"source":"illustrative generic CAD material"});
+    }
+    if let Some(properties) = out["physical_card"]["properties"].as_array() {
+        let elasticity: Vec<_> = properties.iter().filter(|property| property["data"]["kind"] == "elasticity").collect();
+        if let [property] = elasticity.as_slice() {
+            let model = &property["data"]["model"];
+            if model["symmetry"] == "isotropic" {
+                out["isotropic_elasticity"] = json!({"young_mpa":model["young_modulus_pa"].as_f64().map(|v| v/1e6),"poisson_ratio":model["poisson_ratio"],"source":"CAD material card"});
+            }
+        }
+    }
     out["appearance"] = json!(s.doc.material_look(&canonical).as_ref().map(look_json));
     if out.get("physical_card").is_none() {
         out["physical_card"] = Value::Null;

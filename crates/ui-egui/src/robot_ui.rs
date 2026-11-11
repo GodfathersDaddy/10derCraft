@@ -84,183 +84,275 @@ pub fn deformation_workspace(app: &mut SolveApp, ui: &mut egui::Ui) {
         return;
     }
     crate::ui_kit::FileView::page(ui, |ui| {
-        let interfaces = app.session.studio.interface_preview;
-        let component = if interfaces { None } else { crate::fem_rom_ui::selected(app, ui.ctx()) };
-        ui.heading(app.tr(if interfaces {
-            "ui.fem_rom.interfaces"
-        } else if component.is_some() {
-            "ui.fem_rom.result_title"
-        } else {
-            "ui.analysis.deformation"
-        }));
-        ui.label(app.tr(if interfaces {
-            "ui.fem_rom.interface_note"
-        } else if component.is_some() {
-            "ui.fem_rom.result_note"
-        } else {
-            "ui.analysis.beam_caption"
-        }));
-        if interfaces && ui.button(app.tr("ui.fem_rom.back_to_pick")).clicked() {
-            let _ = app.run("mks.interface.display", json!({"enabled":false}));
-        }
-        let key = egui::Id::new(("fem_deformation", app.docs.active, app.session.path.clone(), interfaces, &component));
-        let history_key = key.with("mks_duration");
-        let cached_duration = ui.ctx().data(|data| data.get_temp::<(u64, Option<f64>)>(history_key));
-        let mks_duration = match cached_duration {
-            Some((revision, duration)) if revision == app.session.revision => duration,
-            _ => {
-                let duration = component.as_ref().and_then(|id| solidcraft_engine::cmd::fem_mks_duration(&mut app.session, id).ok().flatten());
-                ui.ctx().data_mut(|data| data.insert_temp(history_key, (app.session.revision, duration)));
-                duration
-            }
-        };
-        let duration = mks_duration.or_else(|| {
-            component.as_ref().and_then(|id| {
-                app.session
-                    .doc
-                    .fem_models
-                    .as_ref()?
-                    .get("models")?
-                    .get(id)?
-                    .get("result")?
-                    .get("flexible")?
-                    .get("times_s")?
-                    .as_array()?
-                    .last()?
-                    .as_f64()
-            })
-        });
-        let mut time = None;
-        if let Some(duration) = duration {
-            let mut enabled = ui.ctx().data(|d| d.get_temp::<bool>(key.with("flex"))).unwrap_or(false);
-            let r = ui.checkbox(&mut enabled, app.tr(if mks_duration.is_some() { "ui.mks_rom.motion_result" } else { "ui.fem_rom.flex_result" }));
-            scenario::publish_handle("fem:rom:motion", r.rect.center());
-            ui.ctx().data_mut(|d| d.insert_temp(key.with("flex"), enabled));
-            if enabled {
-                let mut t = ui.ctx().data(|d| d.get_temp::<f64>(key.with("time"))).unwrap_or(0.);
-                ui.horizontal(|ui| {
-                    ui.label(app.tr("ui.fem_rom.time"));
-                    let r = ui.add(egui::DragValue::new(&mut t).range(0. ..=duration).speed(duration / 100.));
-                    scenario::publish_handle("fem:rom:time", r.rect.center());
-                });
-                ui.ctx().data_mut(|d| d.insert_temp(key.with("time"), t));
-                time = Some(t);
-            }
-        }
-        let mut scale = ui.ctx().data(|d| d.get_temp::<f64>(key.with("scale"))).unwrap_or(if component.is_some() { 1. } else { 1000. });
-        if interfaces {
-            scale = 1.;
-        }
-        if !interfaces {
-            ui.horizontal(|ui| {
-                ui.label(app.tr("ui.analysis.scale"));
-                let control = ui.add(egui::DragValue::new(&mut scale).range(0. ..=10000.).speed(10.));
-                scenario::publish_handle("fem:deformation:scale", control.rect.center());
-            });
-        }
-        ui.ctx().data_mut(|d| d.insert_temp(key.with("scale"), scale));
-        let mut grid = ui.ctx().data(|d| d.get_temp::<bool>(key.with("grid"))).unwrap_or(false);
-        if !interfaces {
-            let toggle = ui.checkbox(&mut grid, app.tr("ui.analysis.display_grid"));
-            scenario::publish_handle("fem:deformation:grid", toggle.rect.center());
-            ui.ctx().data_mut(|d| d.insert_temp(key.with("grid"), grid));
-            ui.small(app.tr(if component.is_some() { "ui.fem_rom.mesh_grid_note" } else { "ui.analysis.grid_note" }));
-        }
-        let cached = ui.ctx().data(|d| d.get_temp::<DeformationScene>(key));
-        let scene = match cached {
-            Some(v) if v.revision == app.session.revision && v.scale == scale && v.grid == grid && v.time == time => v,
-            previous => {
-                let palette = solidcraft_engine::view::Palette::DEFAULT;
-                let result = if interfaces {
-                    solidcraft_engine::cmd::mks_interface_scene(&mut app.session, palette)
-                } else if let Some(id) = &component {
-                    solidcraft_engine::cmd::fem_rom_scene(&mut app.session, id, scale, time, palette)
-                } else {
-                    solidcraft_engine::cmd::robot_fem_result_scene(&mut app.session, scale, palette)
-                };
-                match result {
-                    Ok((mut scene, bounds, maximum)) => {
-                        if grid {
-                            let mut lines = Vec::new();
-                            for surface in scene.meshes.iter().filter(|m| !m.face_colors.is_empty()) {
-                                let mut edges = std::collections::BTreeSet::new();
-                                for t in &surface.mesh.triangles {
-                                    for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
-                                        edges.insert((a.min(b), a.max(b)));
+        let panel = crate::ui_kit::Container::new(ui.ctx(), crate::ui_kit::Surface::Panel);
+        let details = panel
+            .edge("fem_result_properties", crate::ui_kit::Edge::Right)
+            .default_size(340.)
+            .size_range(280. ..=460.)
+            .resizable(true)
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("fem_result_properties_scroll")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        let interfaces = app.session.studio.interface_preview;
+                        let component = if interfaces { None } else { crate::fem_rom_ui::selected(app, ui.ctx()) };
+                        ui.heading(app.tr(if interfaces {
+                            "ui.fem_rom.interfaces"
+                        } else if component.is_some() {
+                            "ui.fem_rom.result_title"
+                        } else {
+                            "ui.analysis.deformation"
+                        }));
+                        ui.label(app.tr(if interfaces {
+                            "ui.fem_rom.interface_note"
+                        } else if component.is_some() {
+                            "ui.fem_rom.result_note"
+                        } else {
+                            "ui.analysis.beam_caption"
+                        }));
+                        if interfaces && ui.button(app.tr("ui.fem_rom.back_to_pick")).clicked() {
+                            let _ = app.run("mks.interface.display", json!({"enabled":false}));
+                        }
+                        let key = egui::Id::new(("fem_deformation", app.docs.active, app.session.path.clone(), interfaces, &component));
+                        let history_key = key.with("mks_duration");
+                        let cached_duration = ui.ctx().data(|data| data.get_temp::<(u64, Option<f64>)>(history_key));
+                        let mks_duration = match cached_duration {
+                            Some((revision, duration)) if revision == app.session.revision => duration,
+                            _ => {
+                                let duration =
+                                    component.as_ref().and_then(|id| solidcraft_engine::cmd::fem_mks_duration(&mut app.session, id).ok().flatten());
+                                ui.ctx().data_mut(|data| data.insert_temp(history_key, (app.session.revision, duration)));
+                                duration
+                            }
+                        };
+                        let duration = mks_duration.or_else(|| {
+                            component.as_ref().and_then(|id| {
+                                app.session
+                                    .doc
+                                    .fem_models
+                                    .as_ref()?
+                                    .get("models")?
+                                    .get(id)?
+                                    .get("result")?
+                                    .get("flexible")?
+                                    .get("times_s")?
+                                    .as_array()?
+                                    .last()?
+                                    .as_f64()
+                            })
+                        });
+                        let static_animation = duration.is_none() && component.is_some();
+                        let duration = duration.or(if static_animation { Some(2.) } else { None });
+                        let mut time = None;
+                        if let Some(duration) = duration {
+                            let mut enabled = ui.ctx().data(|d| d.get_temp::<bool>(key.with("flex"))).unwrap_or(false);
+                            let r = ui.checkbox(
+                                &mut enabled,
+                                app.tr(if static_animation {
+                                    "ui.engineering.static_animation"
+                                } else if mks_duration.is_some() {
+                                    "ui.mks_rom.motion_result"
+                                } else {
+                                    "ui.fem_rom.flex_result"
+                                }),
+                            );
+                            scenario::publish_handle("fem:rom:motion", r.rect.center());
+                            ui.ctx().data_mut(|d| d.insert_temp(key.with("flex"), enabled));
+                            if enabled {
+                                let mut t = ui.ctx().data(|d| d.get_temp::<f64>(key.with("time"))).unwrap_or(0.);
+                                ui.horizontal(|ui| {
+                                    ui.label(app.tr("ui.fem_rom.time"));
+                                    let r = ui.add(egui::DragValue::new(&mut t).range(0. ..=duration).speed(duration / 100.));
+                                    scenario::publish_handle("fem:rom:time", r.rect.center());
+                                });
+                                let mut playing = ui.ctx().data(|d| d.get_temp::<bool>(key.with("playing"))).unwrap_or(false);
+                                let response = ui.checkbox(&mut playing, app.tr("ui.fem_animation.play"));
+                                scenario::publish_handle("fem:rom:play", response.rect.center());
+                                if playing && duration > 0. {
+                                    let dt = f64::from(ui.ctx().input(|i| i.stable_dt)).clamp(0., 0.1);
+                                    t = (t + dt).rem_euclid(duration);
+                                    ui.ctx().request_repaint();
+                                }
+                                ui.ctx().data_mut(|d| d.insert_temp(key.with("playing"), playing));
+                                ui.ctx().data_mut(|d| d.insert_temp(key.with("time"), t));
+                                time = Some(t);
+                            }
+                        }
+                        let automatic_scale = component
+                            .as_ref()
+                            .and_then(|id| app.session.doc.fem_models.as_ref()?.get("models")?.get(id)?.get("result"))
+                            .map(|result| {
+                                let maximum = result["static"]["max_displacement_mm"].as_f64().unwrap_or(0.);
+                                let mut bounds = solidcraft_engine::geom::Aabb3::EMPTY;
+                                for row in result["nodes_mm"].as_array().into_iter().flatten() {
+                                    if let Ok(point) = serde_json::from_value::<solidcraft_engine::geom::Vec3>(row.clone()) {
+                                        bounds.add(point);
                                     }
                                 }
-                                for (a, b) in edges {
-                                    if let (Some(a), Some(b)) = (surface.mesh.positions.get(a as usize), surface.mesh.positions.get(b as usize)) {
-                                        lines.push(solidcraft_engine::render::SceneLine {
-                                            points: vec![*a, *b],
-                                            color: solidcraft_engine::view::colors::EDGE,
-                                            alpha: 1.,
-                                            width: 0.7,
-                                            on_top: false,
-                                        });
+                                if maximum > 1e-12 { (bounds.diagonal() * 0.05 / maximum).clamp(1., 10000.) } else { 1. }
+                            })
+                            .unwrap_or(1000.);
+                        let mut scale = ui.ctx().data(|d| d.get_temp::<f64>(key.with("scale"))).unwrap_or(automatic_scale);
+                        if interfaces {
+                            scale = 1.;
+                        }
+                        if !interfaces {
+                            ui.horizontal(|ui| {
+                                ui.label(app.tr("ui.analysis.scale"));
+                                let control = ui.add(egui::DragValue::new(&mut scale).range(0. ..=10000.).speed(10.));
+                                scenario::publish_handle("fem:deformation:scale", control.rect.center());
+                                if ui.button(app.tr("ui.engineering.auto_scale")).clicked() {
+                                    scale = automatic_scale;
+                                }
+                            });
+                        }
+                        ui.ctx().data_mut(|d| d.insert_temp(key.with("scale"), scale));
+                        let mut grid = ui.ctx().data(|d| d.get_temp::<bool>(key.with("grid"))).unwrap_or(false);
+                        if !interfaces {
+                            let toggle = ui.checkbox(&mut grid, app.tr("ui.analysis.display_grid"));
+                            scenario::publish_handle("fem:deformation:grid", toggle.rect.center());
+                            ui.ctx().data_mut(|d| d.insert_temp(key.with("grid"), grid));
+                            ui.small(app.tr(if component.is_some() { "ui.fem_rom.mesh_grid_note" } else { "ui.analysis.grid_note" }));
+                        }
+                        ui.small(app.tr("ui.engineering.conditions_legend"));
+                        if let Some(id) = &component {
+                            if let Some(record) = app.session.doc.fem_models.as_ref().and_then(|v| v["models"].get(id)) {
+                                if !static_animation && time.is_some() {
+                                    ui.small(app.tr("ui.engineering.mks_loads"));
+                                } else {
+                                    for load in record["job"]["loads"].as_array().into_iter().flatten() {
+                                        ui.label(format!(
+                                            "{} · F [N], M [Nm] = {}",
+                                            load["interface"].as_str().unwrap_or(""),
+                                            load["wrench_world_n_nm"]
+                                        ));
+                                    }
+                                }
+                                if let Some(adaptive) = record["result"].get("adaptive") {
+                                    let status = app.tr(if adaptive["converged"] == true {
+                                        "ui.engineering.target_reached"
+                                    } else {
+                                        "ui.engineering.budget_reached"
+                                    });
+                                    let error = adaptive["history"]
+                                        .as_array()
+                                        .and_then(|v| v.last())
+                                        .and_then(|v| v["estimated_relative_error"].as_f64())
+                                        .unwrap_or(0.);
+                                    ui.label(format!("{} · {} · {:.1}%", app.tr("ui.engineering.adaptive"), status, error * 100.));
+                                }
+                            }
+                        }
+                        let scale =
+                            if static_animation { scale * time.map(|t| 0.5 * (1. - (std::f64::consts::PI * t).cos())).unwrap_or(1.) } else { scale };
+                        let time = if static_animation { None } else { time };
+                        let cached = ui.ctx().data(|d| d.get_temp::<DeformationScene>(key));
+                        let scene = match cached {
+                            Some(v) if v.revision == app.session.revision && v.scale == scale && v.grid == grid && v.time == time => v,
+                            previous => {
+                                let palette = solidcraft_engine::view::Palette::DEFAULT;
+                                let result = if interfaces {
+                                    solidcraft_engine::cmd::mks_interface_scene(&mut app.session, palette)
+                                } else if let Some(id) = &component {
+                                    solidcraft_engine::cmd::fem_rom_scene(&mut app.session, id, scale, time, palette)
+                                } else {
+                                    solidcraft_engine::cmd::robot_fem_result_scene(&mut app.session, scale, palette)
+                                };
+                                match result {
+                                    Ok((mut scene, bounds, maximum)) => {
+                                        if grid {
+                                            let mut lines = Vec::new();
+                                            for surface in scene.meshes.iter().filter(|m| !m.face_colors.is_empty()) {
+                                                let mut edges = std::collections::BTreeSet::new();
+                                                for t in &surface.mesh.triangles {
+                                                    for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
+                                                        edges.insert((a.min(b), a.max(b)));
+                                                    }
+                                                }
+                                                for (a, b) in edges {
+                                                    if let (Some(a), Some(b)) =
+                                                        (surface.mesh.positions.get(a as usize), surface.mesh.positions.get(b as usize))
+                                                    {
+                                                        lines.push(solidcraft_engine::render::SceneLine {
+                                                            points: vec![*a, *b],
+                                                            color: solidcraft_engine::view::colors::EDGE,
+                                                            alpha: 1.,
+                                                            width: 0.7,
+                                                            on_top: false,
+                                                        });
+                                                    }
+                                                }
+                                            }
+                                            scene.lines.extend(lines);
+                                        }
+                                        if previous.is_none() {
+                                            app.cam.set_view(solidcraft_engine::render::StandardView::Iso);
+                                            app.cam.fit(&bounds);
+                                        }
+                                        let cache = DeformationScene {
+                                            time,
+                                            grid,
+                                            revision: app.session.revision,
+                                            scale,
+                                            scene: std::sync::Arc::new(scene),
+                                            bounds,
+                                            maximum,
+                                        };
+                                        ui.ctx().data_mut(|d| d.insert_temp(key, cache.clone()));
+                                        cache
+                                    }
+                                    Err(e) => {
+                                        ui.colored_label(Tokens::get().warning, e.to_string());
+                                        return None;
                                     }
                                 }
                             }
-                            scene.lines.extend(lines);
-                        }
-                        if previous.is_none() {
-                            app.cam.set_view(solidcraft_engine::render::StandardView::Iso);
-                            app.cam.fit(&bounds);
-                        }
-                        let cache = DeformationScene {
-                            time,
-                            grid,
-                            revision: app.session.revision,
-                            scale,
-                            scene: std::sync::Arc::new(scene),
-                            bounds,
-                            maximum,
                         };
-                        ui.ctx().data_mut(|d| d.insert_temp(key, cache.clone()));
-                        cache
-                    }
-                    Err(e) => {
-                        ui.colored_label(Tokens::get().warning, e.to_string());
-                        return;
-                    }
-                }
-            }
-        };
-        let locale = crate::i18n::Locale::for_language(&app.preferences.language);
-        if interfaces {
-            ui.label(locale.format("ui.fem_rom.highlight_count", &[("count", &format!("{:.0}", scene.maximum))]));
-        } else {
-            ui.label(locale.format(
-                if component.is_some() { "ui.fem_rom.field_range" } else { "ui.analysis.field_range" },
-                &[("maximum", &format!("{:.6}", scene.maximum))],
-            ));
-        }
-        if let Some(field) = scene.scene.meshes.iter().find(|m| !m.face_colors.is_empty()) {
-            let (bar, _) = ui.allocate_exact_size(egui::vec2(320., 12.), egui::Sense::hover());
-            let count = field.face_colors.len().max(1);
-            for (i, (_, color)) in field.face_colors.iter().enumerate() {
-                let segment = egui::Rect::from_min_max(
-                    egui::pos2(bar.left() + bar.width() * i as f32 / count as f32, bar.top()),
-                    egui::pos2(bar.left() + bar.width() * (i + 1) as f32 / count as f32, bar.bottom()),
-                );
-                ui.painter().rect_filled(segment, 0., egui::Color32::from_rgb(color.0, color.1, color.2));
-            }
-        }
-        let fit = ui.button(app.tr("ui.analysis.fit"));
-        if fit.clicked() {
-            app.cam.fit(&scene.bounds);
-        }
-        scenario::publish_handle("fem:deformation:fit", fit.rect.center());
-        ui.small(app.tr("ui.analysis.navigation_hint"));
-        if !interfaces
-            && component.is_none()
-            && let Ok(state) = app.session.execute("robot.inspect", &json!({}))
-        {
-            ui.label(locale.format(
-                "ui.analysis.tcp_summary",
-                &[("tcp", &format!("{:.6}", state["fem"]["tcp_deflection_mm"].as_f64().unwrap_or(0.))), ("scale", &format!("{scale:.1}"))],
-            ));
-        }
+                        let locale = crate::i18n::Locale::for_language(&app.preferences.language);
+                        if interfaces {
+                            ui.label(locale.format("ui.fem_rom.highlight_count", &[("count", &format!("{:.0}", scene.maximum))]));
+                        } else {
+                            ui.label(locale.format(
+                                if component.is_some() { "ui.fem_rom.field_range" } else { "ui.analysis.field_range" },
+                                &[("maximum", &format!("{:.6}", scene.maximum))],
+                            ));
+                        }
+                        if let Some(field) = scene.scene.meshes.iter().find(|m| !m.face_colors.is_empty()) {
+                            let (bar, _) = ui.allocate_exact_size(egui::vec2(ui.available_width().min(320.), 12.), egui::Sense::hover());
+                            let count = field.face_colors.len().max(1);
+                            for (i, (_, color)) in field.face_colors.iter().enumerate() {
+                                let segment = egui::Rect::from_min_max(
+                                    egui::pos2(bar.left() + bar.width() * i as f32 / count as f32, bar.top()),
+                                    egui::pos2(bar.left() + bar.width() * (i + 1) as f32 / count as f32, bar.bottom()),
+                                );
+                                ui.painter().rect_filled(segment, 0., egui::Color32::from_rgb(color.0, color.1, color.2));
+                            }
+                        }
+                        let fit = ui.button(app.tr("ui.analysis.fit"));
+                        if fit.clicked() {
+                            app.cam.fit(&scene.bounds);
+                        }
+                        scenario::publish_handle("fem:deformation:fit", fit.rect.center());
+                        ui.small(app.tr("ui.analysis.navigation_hint"));
+                        if !interfaces
+                            && component.is_none()
+                            && let Ok(state) = app.session.execute("robot.inspect", &json!({}))
+                        {
+                            ui.label(locale.format(
+                                "ui.analysis.tcp_summary",
+                                &[
+                                    ("tcp", &format!("{:.6}", state["fem"]["tcp_deflection_mm"].as_f64().unwrap_or(0.))),
+                                    ("scale", &format!("{scale:.1}")),
+                                ],
+                            ));
+                        }
+                        Some((key, scene, scale, grid, time))
+                    })
+                    .inner
+            })
+            .inner;
+        let Some((key, scene, scale, grid, time)) = details else { return };
         let size = egui::vec2(ui.available_width().max(100.), ui.available_height().max(100.));
         let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click_and_drag());
         crate::navigation::handle(app, ui, rect, &response, crate::navigation::NavCaps { orbit: true, pick: false });
@@ -277,7 +369,6 @@ pub fn deformation_workspace(app: &mut SolveApp, ui: &mut egui::Ui) {
         // Keep the last camera frame visible during navigation; never show another model revision.
         if let Some(cache) = &mut image
             && cache.revision == app.session.revision
-            && cache.scale == scale
             && cache.grid == grid
         {
             if cache.texture.is_none()
@@ -291,6 +382,27 @@ pub fn deformation_workspace(app: &mut SolveApp, ui: &mut egui::Ui) {
                 let fit_size = dimensions * (rect.width() / dimensions.x).min(rect.height() / dimensions.y);
                 let target = egui::Rect::from_center_size(rect.center(), fit_size);
                 ui.painter().image(texture.id(), target, egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1., 1.)), egui::Color32::WHITE);
+                // Force glyphs stay legible over the shaded FE skin at any display scale.
+                let red = solidcraft_engine::view::Palette::DEFAULT.axes[0];
+                for line in scene.scene.lines.iter().filter(|line| line.on_top && line.color == red) {
+                    let points: Vec<_> = line
+                        .points
+                        .iter()
+                        .filter_map(|point| {
+                            cache
+                                .camera
+                                .to_screen(*point, f64::from(target.width()), f64::from(target.height()), scene.scene.radius)
+                                .map(|(x, y, _)| target.min + egui::vec2(x as f32, y as f32))
+                        })
+                        .collect();
+                    if points.len() >= 2 {
+                        let painter = ui.painter().with_clip_rect(target);
+                        if points.len() == 2 {
+                            painter.text(points[0], egui::Align2::LEFT_BOTTOM, "F", egui::FontId::proportional(16.), Tokens::get().axis_x);
+                        }
+                        painter.add(egui::Shape::line(points, egui::Stroke::new(3., Tokens::get().axis_x)));
+                    }
+                }
                 if current {
                     scenario::publish_handle("fem:deformation:ready", target.center());
                     scenario::publish_handle(&format!("fem:deformation:pixels:{}x{}", cache.size[0], cache.size[1]), target.center());

@@ -1,0 +1,20 @@
+{
+  "gui_sha256": "ce39611d347a1eba3ca4a1d0d9922ed415de09597f24756b7ac02f8944af7f9a",
+  "normal_paths": [
+    "typed signal chain to native revolute joint",
+    "port-to-port mouse wiring",
+    "double-click port editor",
+    "CAD material inherited by FEM",
+    "adaptive final mesh passed to flexible assembly",
+    "FEM dynamic ROM playback",
+    "static display animation and orbit",
+    "MKS start and six-joint force chart"
+  ],
+  "native_reference": {
+    "duration_s": 8,
+    "samples": 501,
+    "flexible_components": 2
+  },
+  "broad_tests": "paused by user",
+  "note": "Final installed build. Static animation, orbit and visible force overlay verified in the native desktop."
+}

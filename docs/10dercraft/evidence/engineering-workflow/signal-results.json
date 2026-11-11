@@ -1,0 +1,31 @@
+{
+  "observer_keeps_result": true,
+  "force": {
+    "data_type": "vector3",
+    "dimension": "force",
+    "id": 5,
+    "time_s": 0.5,
+    "value": [
+      68.99483156406161,
+      0.0022313668853718993,
+      0.0
+    ]
+  },
+  "boolean": {
+    "data_type": "boolean",
+    "dimension": "scalar",
+    "id": 8,
+    "time_s": 0.5,
+    "value": true
+  },
+  "integer": {
+    "data_type": "integer",
+    "dimension": "scalar",
+    "id": 9,
+    "time_s": 0.5,
+    "value": 12
+  },
+  "type_rejected": "{'error': 'invalid parameters for `mks.diagram`: incompatible input/output signal ports', 'id': 1, 'ok': False}",
+  "cycle_rejected": "{'error': 'invalid parameters for `mks.diagram`: cyclic signal connection', 'id': 1, 'ok': False}",
+  "manual_wire_keeps_result": true
+}

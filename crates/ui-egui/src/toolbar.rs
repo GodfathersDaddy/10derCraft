@@ -14,15 +14,79 @@ pub use crate::workspace::TABS;
 /// Engineering workspaces use the same icon artwork, labels and hover treatment as CAD.
 pub(crate) fn engineering_action(ui: &mut egui::Ui, icon: &str, label: &str, selected: bool) -> egui::Response {
     let t = Tokens::get();
-    let size = vec2(t.space_16 * 6., t.space_16 * 4.5);
+    let size = vec2(BUTTON_MAX_WIDTH, 72.);
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
     if selected || response.hovered() {
         ui.painter().rect_filled(rect, t.radius_md, if selected { t.accent_soft } else { t.hover });
     }
-    icons::paint_icon(ui.painter(), Rect::from_center_size(rect.center_top() + vec2(0., t.space_16 + t.space_4), vec2(28., 28.)), icon, 1.);
+    icons::paint_icon(ui.painter(), Rect::from_center_size(rect.center_top() + vec2(0., t.space_16 + t.space_4), vec2(26., 26.)), icon, 1.);
     let label = ribbon_button_galley(ui.painter(), label, size.x - t.space_8, t.text);
-    ui.painter().galley(pos2(rect.center().x, rect.top() + t.space_16 * 2. + t.space_8), label, t.text);
+    ui.painter().galley(pos2(rect.center().x, ribbon_label_top(rect, label.size().y)), label, t.text);
     response
+}
+
+/// Engineering tabs share CAD ribbon typography, themed selection and horizontal overflow.
+pub(crate) fn engineering_tabs(ui: &mut egui::Ui, workspace: &str, labels: &[String]) -> (usize, bool) {
+    let key = egui::Id::new(("engineering_tabs", workspace));
+    let mut selected = ui.ctx().data(|d| d.get_temp::<usize>(key)).unwrap_or(0).min(labels.len().saturating_sub(1));
+    let previous = selected;
+    egui::ScrollArea::horizontal().id_salt((workspace, "tabs")).show(ui, |ui| {
+        ui.horizontal(|ui| {
+            for (index, label) in labels.iter().enumerate() {
+                let response = ui.selectable_label(selected == index, label);
+                crate::scenario::publish_handle(&format!("{workspace}:tab:{index}"), response.rect.center());
+                if response.clicked() {
+                    selected = index;
+                }
+            }
+        });
+    });
+    ui.ctx().data_mut(|d| d.insert_temp(key, selected));
+    ui.separator();
+    (selected, previous != selected)
+}
+
+/// Shared CAD shell cards for every engineering workspace.
+pub(crate) fn engineering_ribbon(app: &mut SolveApp, ui: &mut egui::Ui, workspace: &str, body: impl FnOnce(&mut SolveApp, &mut egui::Ui)) {
+    let tokens = Tokens::get();
+    let layout = shell_layout(app);
+    let cards = shell_cards(app, ui.available_rect_before_wrap());
+    let host = Container::for_layout(layout, Surface::Chrome);
+    let height = cards.bottom - ui.available_rect_before_wrap().top();
+    host.edge(format!("{workspace}_ribbon"), Edge::Top)
+        .exact_size(height)
+        .show_separator_line(false)
+        .frame(host.edge_frame(Color32::TRANSPARENT))
+        .show(ui, |ui| {
+            for card in [cards.workspace, cards.ribbon] {
+                let frame = host.frame(ui.ctx(), tokens.toolbar, crate::frame::Side::Left);
+                ui.painter().add(frame.paint(card));
+            }
+            app.shell.cards = vec![cards.workspace, cards.ribbon];
+            let rect = cards.workspace;
+            ui.painter().rect_filled(
+                Rect::from_min_size(rect.left_top() + vec2(8., 0.), vec2((rect.width() - 16.).max(0.), tokens.space_3)),
+                0,
+                tokens.accent,
+            );
+            let icon = match workspace {
+                "parameters" => "params",
+                "fem" => "graph",
+                _ => "joint",
+            };
+            icons::paint_icon(ui.painter(), Rect::from_center_size(rect.center_top() + vec2(0., 39.), vec2(30., 30.)), icon, 1.);
+            let title = match workspace {
+                "parameters" => app.tr("ui.engineering.calculation"),
+                "fem" => "FEM",
+                _ => "MKS",
+            };
+            ribbon_text(ui, rect.center_top() + vec2(0., 69.), title, tokens.font_button, tokens.text, true);
+            ribbon_text(ui, rect.center_bottom() - vec2(0., 18.), app.tr("ui.ribbon_workspace"), tokens.font_small, tokens.text_dim, true);
+            if ui.interact(rect, ui.id().with("engineering_workspace"), Sense::click()).on_hover_text(app.tr("ui.engineering.backcad")).clicked() {
+                app.ui.project_page = "cad".into();
+            }
+            ui.scope_builder(egui::UiBuilder::new().max_rect(cards.ribbon.shrink(tokens.space_4)), |ui| body(app, ui));
+        });
 }
 
 /// Legacy paint arguments and non-SVG affordances follow the same semantic palette as the icon.

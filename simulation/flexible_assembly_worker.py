@@ -56,6 +56,10 @@ def run(envelope):
         initial[bid]=com;physical[bid]=(mass,tensor);sensors[bid]={}
         if 'flexible_component' in b:
             record=envelope['components'][b['flexible_component']];r=record['result'];config=record['job']
+            if config.get('adaptive'):
+                if 'resolved_mesh' not in r:
+                    raise ValueError('adaptive ROM needs its final resolved mesh; reduce it again')
+                config = dict(config, mesh=r['resolved_mesh'])
             points,tets,boundary,ports=fe.prepare_mesh(config);K,M,_,_,_,fe_mass=fe.assemble(points,tets,config['material'])
             attachments = record.get('rigid_attachments', [])
             parts = b.get('parts', [])

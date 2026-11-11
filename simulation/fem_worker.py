@@ -158,6 +158,16 @@ def on_surface(points,triangles,tolerance):
         if den<1e-30:continue
         u=(cc*(ap@ab)-bb*(ap@ac))/den;v=(aa*(ap@ac)-bb*(ap@ab))/den
         found|=(dist<=tolerance)&(u>=-1e-8)&(v>=-1e-8)&(u+v<=1+1e-8)
+        # Curved CAD boundaries and straight FE chords need the same bounded
+        # geometric distance tolerance at triangle edges as at the face plane.
+        if tolerance > 1e-8:
+            for start,end in [(a,b),(b,c),(c,a)]:
+                edge=end-start; squared=edge@edge
+                if squared <= 1e-30:continue
+                fraction=np.clip(((points-start)@edge)/squared,0.,1.)
+                closest=start+fraction[:,None]*edge
+                found|=np.linalg.norm(points-closest,axis=1)<=tolerance
+
     return np.where(found)[0]
 
 def prepare_mesh(job):
@@ -199,7 +209,11 @@ def prepare_mesh(job):
             # circle. Include them using the chord bound of the 24-sided mesh.
             inner = float(disk.get('inner_radius_mm', 0)) * .001 * math.cos(math.pi / 24)
             nodes=np.where((np.abs(distance)<1e-8)&(radii<=float(disk['radius_mm'])*.001*(1+1e-7))&(radii>=inner-1e-10))[0]
-        else:nodes=on_surface(points,triangles,1e-8)
+        else:
+            tolerance = float(item.get('tolerance_mm', .00001)) * .001
+            if not math.isfinite(tolerance) or not 1e-9 <= tolerance <= .001:
+                raise ValueError('invalid surface mesh tolerance')
+            nodes=on_surface(points,triangles,tolerance)
         if len(nodes)<3:raise ValueError(f"{item['id']}: fewer than three FE nodes on the actual CAD face; refine/import a matching mesh")
         if used.intersection(map(int,nodes)):raise ValueError('overlapping interface node sets')
         used.update(map(int,nodes))
@@ -298,14 +312,19 @@ def static_result(job,points,ports,K,M,elements,D,reduced):
     error=float(np.linalg.norm(u-exact)/max(np.linalg.norm(exact),1e-20))
     if error>1e-6:raise ValueError('Craig-Bampton static comparison failed')
     stress=[]
+    tensors=[]
     for dofs,matrices in elements:
         values=[]
+        samples=[]
         for B in matrices:
-            sx,sy,sz,txy,tyz,txz=D@(B@u[dofs])
+            sigma=D@(B@u[dofs])
+            samples.append(sigma*1e-6)
+            sx,sy,sz,txy,tyz,txz=sigma
             values.append(float(math.sqrt(.5*((sx-sy)**2+(sy-sz)**2+(sz-sx)**2)+3*(txy*txy+tyz*tyz+txz*txz))*1e-6))
         stress.append(max(values))
+        tensors.append(np.mean(samples,axis=0).tolist())
     root=ports[0];reaction=root['R'].T@(K@u-force)[(root['nodes'][:,None]*3+np.arange(3)).ravel()]
-    return dict(node_displacements_mm=(u.reshape(-1,3)*1000).tolist(),element_von_mises_mpa=stress,max_displacement_mm=float(max(np.linalg.norm(u.reshape(-1,3),axis=1))*1000),max_von_mises_mpa=max(stress),root_reaction_world_n_nm=reaction.tolist(),strain_energy_j=float(.5*u@(K@u)),full_vs_rom_relative_displacement_error=error)
+    return dict(node_displacements_mm=(u.reshape(-1,3)*1000).tolist(),element_von_mises_mpa=stress,element_stress_tensor_mpa=tensors,max_displacement_mm=float(max(np.linalg.norm(u.reshape(-1,3),axis=1))*1000),max_von_mises_mpa=max(stress),root_reaction_world_n_nm=reaction.tolist(),strain_energy_j=float(.5*u@(K@u)),full_vs_rom_relative_displacement_error=error)
 
 def flexible_result(job,points,tets,boundary,ports,K,M,basis,values):
     import exudyn as exu
@@ -345,7 +364,7 @@ def flexible_result(job,points,tets,boundary,ports,K,M,basis,values):
     if q.shape!=(samples,basis.shape[1]+1) or not all(np.isfinite(v).all() and v.shape[0]==samples for v in [q,p,r,f]):raise ValueError('invalid flexible result sensors')
     return dict(backend='Exudyn FFRFreducedOrder',backend_version=exu.__version__,times_s=q[:,0].tolist(),modal_coordinates=q[:,1:].tolist(),reference_poses=np.column_stack([p[:,1:],r[:,1:]]).tolist(),joint_forces_local_n=f[:,1:].tolist(),max_elastic_displacement_mm=float(max(np.linalg.norm((basis@row).reshape(-1,3),axis=1).max() for row in q[:,1:])*1000),coupling='FFRF inertial coupling and elastic joint reaction; first surface attached to prescribed moving reference',force_initial_sample_valid=False)
 
-def run(job):
+def run_once(job):
     if job.get('schema')!='solidcraft.fem-job/1' or job.get('action') not in ['reduce','flexible']:raise ValueError('unsupported FEM job')
     points,tets,boundary,ports=prepare_mesh(job)
     K,M,elements,D,volume,mass=assemble(points,tets,job['material'])
@@ -359,6 +378,100 @@ def run(job):
     import scipy
     result['provenance']=dict(motion_profiles_sha256=SOURCE_SHA256,worker_sha256=sha256(Path(__file__).read_bytes()).hexdigest(),job_sha256=sha256(json.dumps(job,sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest(),numpy_version=np.__version__,scipy_version=scipy.__version__)
     return result
+
+def recovered_stress_error(result):
+    points = np.asarray(result['nodes_mm'], dtype=float) * .001
+    cells = np.asarray(result['tetrahedra'], dtype=int)[:, :4]
+    sigma = np.asarray(result['static']['element_stress_tensor_mpa'], dtype=float)
+    edges = points[cells[:, 1:]] - points[cells[:, :1]]
+    volume = np.abs(np.linalg.det(edges)) / 6.
+    recovered = np.zeros((len(points), 6))
+    weights = np.zeros(len(points))
+    for corner in range(4):
+        np.add.at(recovered, cells[:, corner], sigma * volume[:, None])
+        np.add.at(weights, cells[:, corner], volume)
+    recovered /= np.maximum(weights[:, None], 1e-30)
+    difference = recovered[cells] - sigma[:, None, :]
+    young = float(result['material']['young_mpa'])
+    poisson = float(result['material']['poisson_ratio'])
+    compliance = np.zeros((6, 6))
+    compliance[:3, :3] = -poisson / young
+    np.fill_diagonal(compliance[:3, :3], 1. / young)
+    compliance[3:, 3:] = np.eye(3) * (2. * (1. + poisson) / young)
+    indicators = volume * np.einsum('eai,ij,eaj->e', difference, compliance, difference) / 4.
+    energy = np.sum(volume * np.einsum('ei,ij,ej->e', sigma, compliance, sigma))
+    return np.sqrt(np.maximum(indicators, 0.)), math.sqrt(float(np.sum(indicators)) / max(float(energy), 1e-30))
+
+
+def refine_error_regions(result, indicators):
+    points = np.asarray(result['nodes_mm'], dtype=float)
+    cells = np.asarray(result['tetrahedra'], dtype=int)[:, :4]
+    used = np.unique(cells)
+    remap = np.full(len(points), -1, dtype=int)
+    remap[used] = np.arange(len(used))
+    points = list(points[used])
+    cells = remap[cells].tolist()
+    marked = np.argsort(indicators)[-min(16, max(1, len(cells)//10)):]
+    edges = set()
+    for index in marked:
+        cell = cells[int(index)]
+        edge = max(((cell[a], cell[b]) for a,b in EDGES), key=lambda edge: np.linalg.norm(points[edge[0]]-points[edge[1]]))
+        edges.add(tuple(sorted(edge)))
+    # Bisect every tetrahedron incident on the chosen edge, including neighbours.
+    # Shared faces therefore receive the same new midpoint and remain conforming.
+    for a,b in sorted(edges):
+        midpoint = len(points)
+        points.append((points[a]+points[b])*.5)
+        updated = []
+        for cell in cells:
+            if a in cell and b in cell:
+                left = list(cell); right = list(cell)
+                left[left.index(a)] = midpoint
+                right[right.index(b)] = midpoint
+                updated.extend([left, right])
+            else:
+                updated.append(cell)
+        cells = updated
+    unique_edges = {tuple(sorted((cell[a],cell[b]))) for cell in cells for a,b in EDGES}
+    quadratic = result['element_type'] == 'TET10'
+    predicted_nodes = len(points) + (len(unique_edges) if quadratic else 0)
+    if len(points)>512 or len(cells)>3000 or predicted_nodes>1500:
+        return None
+    return dict(nodes_mm=np.asarray(points).tolist(), tetrahedra=cells, element_order=2 if quadratic else 1)
+
+
+def run(job):
+    settings = job.get('adaptive')
+    if not settings:
+        return run_once(job)
+    tolerance = float(settings['tolerance'])
+    cycles = settings['cycles']
+    if not math.isfinite(tolerance) or not .001<=tolerance<=.5 or isinstance(cycles,bool) or not isinstance(cycles,int) or not 1<=cycles<=6:
+        raise ValueError('invalid bounded adaptive settings')
+    import copy
+    current = copy.deepcopy(job)
+    history = []
+    reason = 'cycle_budget'
+    for cycle in range(cycles+1):
+        result = run_once(current)
+        indicators, estimated = recovered_stress_error(result)
+        history.append(dict(cycle=cycle, nodes=len(result['nodes_mm']), elements=len(result['tetrahedra']), estimated_relative_error=estimated))
+        if estimated <= tolerance:
+            reason = 'target_reached'
+            break
+        if cycle == cycles:
+            break
+        mesh = refine_error_regions(result, indicators)
+        if mesh is None:
+            reason = 'mesh_budget'
+            break
+        current['mesh'] = mesh
+    result['resolved_mesh'] = current['mesh']
+    result['adaptive'] = dict(method='volume-weighted recovered stress energy indicator; conforming shared-edge bisection',
+                              history=history, target=tolerance, converged=reason=='target_reached', stop_reason=reason)
+    result['provenance']['job_sha256'] = sha256(json.dumps(job,sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()
+    return result
+
 
 def main():
     try:

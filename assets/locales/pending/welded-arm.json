@@ -1,0 +1,18 @@
+{
+  "de": {
+    "ui.weld.parts": "Elastische Schweißteile",
+    "ui.weld.interfaces": "Koplanare Anschlussflächen gemeinsam koppeln",
+    "ui.weld.mesh_note": "Für mehrere Teile ein gemeinsames, an den Schweißnähten verbundenes Tetraedernetz importieren.",
+    "ui.weld.mks_scale": "FE-Überlagerung ×",
+    "ui.weld.mks_note": "Blaues Netz zeigt die überhöhte ROM-Verformung. Gelenkbewegung und Kräfte werden maßstäblich berechnet.",
+    "ui.weld.tolerance": "Netz-zu-Fläche-Toleranz"
+  },
+  "en": {
+    "ui.weld.parts": "Elastic welded parts",
+    "ui.weld.interfaces": "Couple coplanar attachment faces together",
+    "ui.weld.mesh_note": "For multiple parts, import one conforming tetrahedral mesh bonded at the weld seams.",
+    "ui.weld.mks_scale": "FE overlay ×",
+    "ui.weld.mks_note": "Blue mesh shows magnified ROM deformation. Joint motion and forces use physical dimensions.",
+    "ui.weld.tolerance": "Mesh-to-surface tolerance"
+  }
+}

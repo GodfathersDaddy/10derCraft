@@ -1,0 +1,53 @@
+{
+  "build": "ci profile, native desktop and CLI",
+  "broad_tests": "paused at user request",
+  "robot": {
+    "duration_s": 8,
+    "samples": 501,
+    "flexible_components": {
+      "block_3": {
+        "max_elastic_displacement_mm": 0.1332984182040965
+      },
+      "block_4": {
+        "max_elastic_displacement_mm": 0.07595279469365397
+      }
+    }
+  },
+  "fem": [
+    {
+      "id": "ROM_Oberarm",
+      "nodes": 801,
+      "elements": 345,
+      "max_static_displacement_mm": 0.005564210110469391,
+      "static_rom_relative_error": 6.428723945540204e-12,
+      "adaptive": {
+        "converged": false,
+        "history": [
+          {
+            "cycle": 0,
+            "elements": 288,
+            "estimated_relative_error": 0.29493345966113704,
+            "nodes": 720
+          },
+          {
+            "cycle": 1,
+            "elements": 345,
+            "estimated_relative_error": 0.2903780205369118,
+            "nodes": 801
+          }
+        ],
+        "method": "volume-weighted recovered stress energy indicator; conforming shared-edge bisection",
+        "stop_reason": "cycle_budget",
+        "target": 0.1
+      }
+    },
+    {
+      "id": "ROM_Unterarm",
+      "nodes": 1296,
+      "elements": 576,
+      "max_static_displacement_mm": 0.011986021968995992,
+      "static_rom_relative_error": 2.143882320660855e-11,
+      "adaptive": null
+    }
+  ]
+}

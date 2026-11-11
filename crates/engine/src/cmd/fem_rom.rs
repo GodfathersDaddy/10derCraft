@@ -31,6 +31,9 @@ struct ImportedMesh {
 fn divisions() -> [u32; 3] {
     [4, 2, 2]
 }
+fn interface_tolerance() -> f64 {
+    0.00001
+}
 fn modes() -> usize {
     6
 }
@@ -45,11 +48,21 @@ struct Build {
     #[serde(default)]
     body: Option<String>,
     #[serde(default)]
+    bodies: Vec<String>,
+    #[serde(default)]
+    bonded_interfaces: bool,
+    #[serde(default = "interface_tolerance")]
+    interface_tolerance_mm: f64,
+    #[serde(default)]
     rigid_attachments: Vec<RigidAttachment>,
     #[serde(default)]
     joint_interfaces: Vec<JointInterface>,
     interfaces: Vec<String>,
     material: Material,
+    #[serde(default)]
+    material_from_cad: bool,
+    #[serde(default)]
+    adaptive: Option<Adaptive>,
     #[serde(default = "divisions")]
     divisions: [u32; 3],
     #[serde(default = "modes")]
@@ -60,6 +73,12 @@ struct Build {
     mesh: Option<ImportedMesh>,
     #[serde(default)]
     mesh_path: Option<String>,
+}
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct Adaptive {
+    tolerance: f64,
+    cycles: u32,
 }
 #[derive(Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -479,6 +498,55 @@ fn create(s: &mut Session, p: &Value) -> Result<Value> {
     {
         return Err(error("bounded ID, one to eight surface interfaces, mesh divisions 1..16 and modes 1..24 required"));
     }
+    if !p.interface_tolerance_mm.is_finite() || !(0.000001..=1.).contains(&p.interface_tolerance_mm) {
+        return Err(error("surface mesh tolerance must be 0.000001..1 mm"));
+    }
+    let fingerprint = source(s)?;
+    let graph = s.execute("mks.model", &json!({}))?;
+    let block =
+        graph["blocks"].as_array().and_then(|a| a.iter().find(|v| v["id"] == p.block)).ok_or_else(|| error("select a native CAD/MKS block"))?;
+    if p.bodies.len() > 256
+        || p.body.is_some() && !p.bodies.is_empty()
+        || p.bodies.iter().collect::<std::collections::BTreeSet<_>>().len() != p.bodies.len()
+    {
+        return Err(error("choose one part or a distinct bonded part list"));
+    }
+    let owned: Vec<_> = block["bodies"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|b| {
+            p.body.as_ref().is_none_or(|name| b["source"] == *name) && (p.bodies.is_empty() || p.bodies.iter().any(|name| b["source"] == *name))
+        })
+        .collect();
+    if owned.is_empty() || owned.len() > 256 || p.body.is_some() && owned.len() != 1 || !p.bodies.is_empty() && owned.len() != p.bodies.len() {
+        return Err(error("ambiguous/empty body selection; select the complete block or a uniquely named part"));
+    }
+    let mut material_source = Value::Null;
+    if p.material_from_cad {
+        let mut names = std::collections::BTreeSet::new();
+        for owner in &owned {
+            let body = owner["source"].as_str().ok_or_else(|| error("CAD body missing"))?;
+            names.insert(s.doc.materials.get(body).cloned().unwrap_or_else(|| solidcraft_doc::DEFAULT_MATERIAL.to_owned()));
+        }
+        if names.len() != 1 {
+            return Err(error("select one CAD material for an elastic domain"));
+        }
+        let name = names.first().cloned().ok_or_else(|| error("CAD material missing"))?;
+        let material = s.execute("material.inspect", &json!({"material":name}))?;
+        let elastic = &material["isotropic_elasticity"];
+        p.material = Material {
+            young_mpa: elastic["young_mpa"].as_f64().ok_or_else(|| error("CAD material needs an isotropic elasticity card"))?,
+            poisson_ratio: elastic["poisson_ratio"].as_f64().ok_or_else(|| error("CAD material needs Poisson ratio"))?,
+            density_kg_m3: material["density_g_cm3"].as_f64().ok_or_else(|| error("CAD material density missing"))? * 1000.,
+        };
+        material_source = json!({"name":name,"elasticity":elastic});
+    }
+    if let Some(adaptive) = &p.adaptive {
+        if !adaptive.tolerance.is_finite() || !(0.001..=0.5).contains(&adaptive.tolerance) || !(1..=6).contains(&adaptive.cycles) {
+            return Err(error("adaptive tolerance .001..0.5 and cycles 1..6 required"));
+        }
+    }
     if !p.material.young_mpa.is_finite()
         || !p.material.poisson_ratio.is_finite()
         || !p.material.density_kg_m3.is_finite()
@@ -487,15 +555,6 @@ fn create(s: &mut Session, p: &Value) -> Result<Value> {
         || !(1. ..=1e6).contains(&p.material.density_kg_m3)
     {
         return Err(error("invalid elastic material"));
-    }
-    let fingerprint = source(s)?;
-    let graph = s.execute("mks.model", &json!({}))?;
-    let block =
-        graph["blocks"].as_array().and_then(|a| a.iter().find(|v| v["id"] == p.block)).ok_or_else(|| error("select a native CAD/MKS block"))?;
-    let owned: Vec<_> =
-        block["bodies"].as_array().into_iter().flatten().filter(|b| p.body.as_ref().is_none_or(|name| b["source"] == *name)).collect();
-    if owned.is_empty() || owned.len() > 256 || p.body.is_some() && owned.len() != 1 {
-        return Err(error("ambiguous/empty body selection; select the complete block or a uniquely named part"));
     }
     if p.rigid_attachments.len() > 256 || p.joint_interfaces.len() > 8 {
         return Err(error("at most 256 rigid attachments and eight joint interface assignments"));
@@ -562,7 +621,7 @@ fn create(s: &mut Session, p: &Value) -> Result<Value> {
             .ok_or_else(|| error("interface named face is stale"))?;
         let world: solidcraft_doc::Mat = serde_json::from_value(placed["world"].clone()).map_err(|e| error(e.to_string()))?;
         let mesh = body.mesh();
-        let triangles: Vec<_> = mesh
+        let mut triangles: Vec<_> = mesh
             .triangles
             .iter()
             .enumerate()
@@ -574,7 +633,36 @@ fn create(s: &mut Session, p: &Value) -> Result<Value> {
         }
         let frame = super::mks_interfaces::frame(s, id)?;
         let origin = apply_point(&frame, Vec3::ZERO);
-        let mut spec = json!({"id":id,"origin_mm":origin,"triangles_mm":triangles,"area_mm2":port["port"]["area_mm2"]});
+        if p.bonded_interfaces && owned.len() > 1 {
+            let first = triangles.first().ok_or_else(|| error("surface triangles missing"))?;
+            let normal = (first[1] - first[0]).cross(first[2] - first[0]).normalized().ok_or_else(|| error("degenerate interface"))?;
+            let point = first[0];
+            for owner in &owned {
+                if *owner == *placed {
+                    continue;
+                }
+                let other = native
+                    .bodies
+                    .iter()
+                    .find(|body| {
+                        Some(body.name.as_str()) == owner["source"].as_str() && Some(s.doc.model_body_component(body)) == owner["component"].as_u64()
+                    })
+                    .ok_or_else(|| error("bonded CAD part missing"))?;
+                let world: solidcraft_doc::Mat = serde_json::from_value(owner["world"].clone()).map_err(|e| error(e.to_string()))?;
+                let mesh = other.mesh();
+                for cell in &mesh.triangles {
+                    let face = cell.map(|i| apply_point(&world, mesh.positions[i as usize]));
+                    if face.iter().all(|p| (*p - point).dot(normal).abs() < 1e-6) {
+                        triangles.push(face);
+                    }
+                }
+            }
+            if triangles.len() > 2048 {
+                return Err(error("bonded interface exceeds 2048 triangles"));
+            }
+        }
+        let area: f64 = triangles.iter().map(|t| (t[1] - t[0]).cross(t[2] - t[0]).len() * 0.5).sum();
+        let mut spec = json!({"id":id,"origin_mm":origin,"triangles_mm":triangles,"area_mm2":area,"tolerance_mm":p.interface_tolerance_mm});
         if let Some(sh) = &shape
             && (sh["kind"] == "cylinder" || sh["kind"] == "tube")
         {
@@ -601,13 +689,13 @@ fn create(s: &mut Session, p: &Value) -> Result<Value> {
     } else {
         json!({"shape":shape,"divisions":p.divisions,"element_order":p.element_order})
     };
-    let job = json!({"schema":"solidcraft.fem-job/1","action":"reduce","generation":super::inspect::new_document_id(),"source":fingerprint,"mesh":mesh,"material":p.material,"interfaces":interfaces,"modes":p.modes,"loads":[{"interface":p.interfaces.last(),"wrench_world_n_nm":[0,0,-100,0,0,0]}]});
+    let job = json!({"schema":"solidcraft.fem-job/1","action":"reduce","generation":super::inspect::new_document_id(),"source":fingerprint,"mesh":mesh,"material":p.material,"adaptive":p.adaptive,"interfaces":interfaces,"modes":p.modes,"loads":[{"interface":p.interfaces.last(),"wrench_world_n_nm":[0,0,-100,0,0,0]}]});
     let mut all = models(s);
     if all["models"].as_object().is_none_or(|m| m.len() >= 8 && !m.contains_key(&p.id)) {
         return Err(error("at most eight FEM component models"));
     }
     let enabled = all["models"][&p.id]["enabled"] == true;
-    all["models"][&p.id] = json!({"id":p.id,"block":p.block,"body":p.body,"owners":owned,"rigid_attachments":attachments,"joint_interfaces":p.joint_interfaces,"job":job,"result":null,"enabled":enabled});
+    all["models"][&p.id] = json!({"id":p.id,"block":p.block,"body":p.body,"bodies":p.bodies,"bonded_interfaces":p.bonded_interfaces,"owners":owned,"rigid_attachments":attachments,"joint_interfaces":p.joint_interfaces,"job":job,"material_from_cad":p.material_from_cad,"material_source":material_source,"result":null,"enabled":enabled});
     save(s, all)?;
     Ok(json!({"id":p.id}))
 }
@@ -733,7 +821,7 @@ fn accept(s: &mut Session, p: &Value) -> Result<Value> {
     if p.job["source"] != source(s)? || stored["job"]["source"] != p.job["source"] {
         return Err(error("FEM inputs changed while solving; computed result discarded"));
     }
-    for key in ["mesh", "material", "interfaces", "modes", "generation"] {
+    for key in ["mesh", "material", "adaptive", "interfaces", "modes", "generation"] {
         if stored["job"][key] != p.job[key] {
             return Err(error("FEM model changed while solving; computed result discarded"));
         }
@@ -876,11 +964,75 @@ pub fn scene(
             (i, solidcraft_render::Rgb(mix(a.0, b.0), mix(a.1, b.1), mix(a.2, b.2)))
         })
         .collect();
-    let sc = solidcraft_render::Scene {
+    let mut sc = solidcraft_render::Scene {
         background: Some(palette.background),
         radius: bounds.diagonal().max(1.),
         meshes: vec![solidcraft_render::SceneMesh { mesh: Arc::new(mesh), color: palette.body, face_colors, opacity: 1. }],
         ..Default::default()
     };
+    let display_point = |point: Vec3| if moving { apply_point(&rotation, point - origin) } else { point };
+    let marker_size = bounds.diagonal().max(1.) * 0.015;
+    for interface in r["interfaces"].as_array().into_iter().flatten().filter(|p| p["reference"] == true) {
+        for index in interface["nodes"].as_array().into_iter().flatten().filter_map(Value::as_u64) {
+            if let Some(point) = positions.get(index as usize) {
+                let point = display_point(*point);
+                for axis in [Vec3::X, Vec3::Y, Vec3::Z] {
+                    sc.lines.push(solidcraft_render::SceneLine {
+                        points: vec![point - axis * marker_size, point + axis * marker_size],
+                        color: palette.axes[2],
+                        alpha: 1.,
+                        width: 2.,
+                        on_top: true,
+                    });
+                }
+            }
+        }
+    }
+    // Retain the undeformed skin as a translucent reference wireframe.
+    let mut edges = std::collections::BTreeSet::new();
+    for cell in &sc.meshes[0].mesh.triangles {
+        for (a, b) in [(cell[0], cell[1]), (cell[1], cell[2]), (cell[2], cell[0])] {
+            edges.insert((a.min(b), a.max(b)));
+        }
+    }
+    for (a, b) in edges {
+        if let (Some(a), Some(b)) = (positions.get(a as usize), positions.get(b as usize)) {
+            sc.lines.push(solidcraft_render::SceneLine {
+                points: vec![display_point(*a), display_point(*b)],
+                color: palette.edge,
+                alpha: 0.2,
+                width: 0.6,
+                on_top: false,
+            });
+        }
+    }
+    if !moving {
+        for load in record["job"]["loads"].as_array().into_iter().flatten() {
+            let interface = r["interfaces"].as_array().into_iter().flatten().find(|p| p["id"] == load["interface"]);
+            if let Some(interface) = interface {
+                let point: Vec3 = serde_json::from_value(interface["origin_mm"].clone()).map_err(|e| error(e.to_string()))?;
+                let force = Vec3::new(
+                    load["wrench_world_n_nm"][0].as_f64().unwrap_or(0.),
+                    load["wrench_world_n_nm"][1].as_f64().unwrap_or(0.),
+                    load["wrench_world_n_nm"][2].as_f64().unwrap_or(0.),
+                );
+                if let Some(direction) = force.normalized() {
+                    let length = marker_size * 8.;
+                    let start = point - direction * length;
+                    let side = direction.cross(if direction.z.abs() < 0.9 { Vec3::Z } else { Vec3::X }).normalized().unwrap_or(Vec3::X);
+                    for points in [
+                        vec![start, point],
+                        vec![
+                            point - direction * length * 0.25 + side * length * 0.12,
+                            point,
+                            point - direction * length * 0.25 - side * length * 0.12,
+                        ],
+                    ] {
+                        sc.lines.push(solidcraft_render::SceneLine { points, color: palette.axes[0], alpha: 1., width: 3., on_top: true });
+                    }
+                }
+            }
+        }
+    }
     Ok((sc, bounds, maximum))
 }
