@@ -138,11 +138,45 @@ pub fn show(app: &mut SolveApp, ui: &mut egui::Ui) {
 
 /// The Start page shows actual project variants when a calculation/design exists.
 pub fn project_variants(app: &mut SolveApp, ui: &mut egui::Ui) -> bool {
+    let has_configurations = !app.session.doc.configs.rows.is_empty();
+    if has_configurations {
+        let id = ui.make_persistent_id(("cad_configuration_choice", app.docs.active, app.session.path.clone()));
+        let rows: Vec<_> = app.session.doc.configs.rows.iter().map(|row| row.name.clone()).collect();
+        let active = app.session.doc.configs.active.clone().unwrap_or_default();
+        let mut selected = ui.data_mut(|data| data.get_temp::<String>(id)).filter(|name| rows.contains(name)).unwrap_or_else(|| active.clone());
+        if !rows.contains(&selected) {
+            selected = rows.first().cloned().unwrap_or_default();
+        }
+        ui.heading("CAD-Konfigurationen");
+        ui.horizontal_wrapped(|ui| {
+            let choice = egui::ComboBox::from_id_salt(id).selected_text(&selected).show_ui(ui, |ui| {
+                for name in &rows {
+                    ui.selectable_value(&mut selected, name.clone(), name);
+                }
+            });
+            scenario::publish_handle("config:project:choice", choice.response.rect.center());
+            let apply = ui.button("Konfiguration übernehmen");
+            scenario::publish_handle("config:project:apply", apply.rect.center());
+            if apply.clicked()
+                && let Err(error) = app.run_heavy("config.activate", json!({"row":selected}))
+            {
+                app.set_status(error.to_string(), true);
+            }
+            let table = ui.button("Familientabelle bearbeiten");
+            scenario::publish_handle("config:project:table", table.rect.center());
+            if table.clicked() {
+                app.start("config.table");
+            }
+        });
+        ui.data_mut(|data| data.insert_temp(id, selected));
+        ui.label(format!("Aktive CAD-Konfiguration · {active}"));
+        ui.separator();
+    }
     let snapshot = app.session.execute("worksheet.read", &json!({})).unwrap_or_default();
     let has_variants = snapshot["variants"]["items"].as_array().is_some_and(|a| !a.is_empty());
     let has_gears = app.session.doc.metadata.get("org.solidcraft.gear-designs").and_then(|v| v["items"].as_array()).is_some_and(|a| !a.is_empty());
     if !has_variants && !has_gears {
-        return false;
+        return has_configurations;
     }
     let id = egui::Id::new(("calculation_document", app.docs.active, app.session.path.clone()));
     let mut draft = ui.data_mut(|d| d.get_temp::<Draft>(id)).unwrap_or_default();

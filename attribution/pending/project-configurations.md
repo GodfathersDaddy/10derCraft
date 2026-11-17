@@ -1,0 +1,2 @@
+| assets/locales/pending/project-configurations.json | 10derCraft contributors | Original configuration labels | MIT OR Apache-2.0 |
+| examples/projects/10der-Rohrroboter-Konfigurierbar.solidcraft | 10derCraft academic reference-based design; UR7e reference by Universal Robots A/S | Native parametric research example; see docs/10dercraft/robot-configurable/README.md | Reference terms in docs/10dercraft/robot-configurable/UR-Graphical-Documentation-Terms.txt |

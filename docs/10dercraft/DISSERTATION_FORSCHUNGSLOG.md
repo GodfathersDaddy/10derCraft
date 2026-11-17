@@ -2133,3 +2133,18 @@ Auf ausdrücklichen Nutzerwunsch wurde der aktuelle Entwicklungsstand ohne neue 
 Die Zusammenführung kombiniert die neue Mehrfachplatzierung von Normteilen und zöllige Teilefamilien mit den vorhandenen Motorbauteilen und der platzierungsbezogenen Erkennung der Anschlussflächen. Formelblatt-Tastatureingaben und die neuen Regeln für globale Tastenkürzel wurden zusammengeführt. Übersetzungen übernehmen neue Originaleinträge und erhalten lokale Anpassungen. Die macOS-Releasejobs verwenden den neuen Runner und behalten die vorhandene Repository-Bedingung.
 
 Die Veröffentlichung dieses Zwischenstands erfolgt mit übersprungenen CI-Läufen. Für die lokale Bereitstellung wird die native Anwendung gebaut. Ein erfolgreicher Build ersetzt die ausstehenden Bedien-, Modell- und Solverprüfungen nicht. Bestehende Beispielmodelle wurden während der Integration nicht neu gespeichert.
+
+
+## 2026-11-11 - Konfigurierbarer referenzbasierter Rohr-Flansch-Entwurf
+
+Die bereitgestellte Datei UR7e.step wurde lokal mit 23 Koerpern eingelesen. Einige Flaechen hatten Tessellierungswarnungen. Auf dieser Vorlage entstand ein neuer nativer akademischer Rohr-Flansch-Entwurf mit seitlichem Ellbogenversatz, parametergesteuerten Rohrlaengen, Durchmessern und Wandstaerken, 10der-Deckeln sowie sechs Konfigurationszeilen. Die Werkzeuggruppen Greifer und Sauger werden durch gemeinsam gespeicherte Feature-Unterdrueckungen gewechselt. Eine allgemeine Konfigurationsauswahl mit Uebernehmen und Familientabelle wurde in die vorhandene Projektvariantenansicht integriert.
+
+Die Variantenpruefung deckte instabile solverbewegte Sechskantprofile auf. Direkt aus Parameter-Ausdruecken erzeugte Eckpunkte beseitigten die Profilverluste. Danach wurden alle sechs Zeilen fehlerfrei aufgebaut. Analytische Rohrvolumina und native Messung stimmen innerhalb 0,01 Prozent ueberein. Die Werkzeugbelegung wurde anhand der aktiven Koerpernamen geprueft. Beispiel und Nachweise liegen lokal unter output/robot-configurable. Herstellerbedingungen und Herkunftshash sind dort dokumentiert. Keine Veroeffentlichung dieses referenzbasierten Modells wurde vorgenommen.
+
+Grenzen sind vereinfachte Gelenkgehaeuse und Werkzeuggeometrie, geometrisch vereinfachte Gewinde, ausstehende Montage- und Festigkeitsnachweise sowie fehlende Gelenk-, FEM- und ROM-Ableitung fuer diesen neuen CAD-Entwurf. Die Metallwerkstoffe sind Entwurfsannahmen. Breite Tests und CI bleiben pausiert.
+
+Bediennachweis des neuen Konfigurationsbereichs im nativen DX12-Desktop erfolgreich. Familientabelle geoeffnet und Lang - Sauger sowie Standard - Greifer ueber sichtbare Aktivieren-Schaltflaechen gewechselt. Der erzwungene OpenGL-Testmodus zeigte Darstellungsartefakte, die normale DX12-Auswahl stellte das Modell korrekt dar. Ein bearbeiteter Schulter-Montagesitz mit Platte wurde ergaenzt und alle sechs Zeilen erneut erfolgreich aufgebaut. Screenshots liegen unter output/robot-configurable-ui.
+
+## 2026-11-17 - Veroeffentlichung des Konfigurationsstands
+
+Auf ausdruecklichen Nutzerauftrag werden die allgemeine CAD-Konfigurationsauswahl und der referenzbasierte akademische Rohrroboter mit sechs Varianten auf den bestehenden Entwicklungsbranch hochgeladen. Bedienhinweise, Herstellerbedingungen und vorhandene gezielte Pruefnachweise werden mitgeliefert. Fuer diesen Upload wurden keine neuen Tests gestartet.

@@ -2,6 +2,12 @@
   "schema": "10dercraft.examples/1",
   "examples": [
     {
+      "id": "robot-configurable-flanges",
+      "title": "10der-Rohrroboter - sechs CAD-Konfigurationen",
+      "path": "examples/projects/10der-Rohrroboter-Konfigurierbar.solidcraft",
+      "description": "Parametrische Rohre, Flanschverschraubungen, 10der-Deckel sowie Greifer- und Saugervarianten. Akademischer Referenzentwurf; Hinweise und Bedingungen unter docs/10dercraft/robot-configurable."
+    },
+    {
       "id": "robot-tube-weldment-8kg",
       "title": "Roboter 8 kg - Rohrbaugruppe mit sichtbarer ROM-Durchbiegung",
       "path": "examples/projects/Roboter-Rohr-Schweissbaugruppe-ROM-MKS.solidcraft",

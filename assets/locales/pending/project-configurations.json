@@ -1,0 +1,14 @@
+{
+  "de": {
+    "ui.configuration.heading": "CAD-Konfigurationen",
+    "ui.configuration.apply": "Konfiguration übernehmen",
+    "ui.configuration.table": "Familientabelle bearbeiten",
+    "ui.configuration.active": "Aktive CAD-Konfiguration"
+  },
+  "en": {
+    "ui.configuration.heading": "CAD configurations",
+    "ui.configuration.apply": "Apply configuration",
+    "ui.configuration.table": "Edit family table",
+    "ui.configuration.active": "Active CAD configuration"
+  }
+}

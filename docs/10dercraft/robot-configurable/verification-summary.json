@@ -1,0 +1,56 @@
+[
+  {
+    "configuration": "Standard - Greifer",
+    "volume_relative_errors": [
+      9.622459762929029e-05,
+      7.74861179283694e-05
+    ],
+    "body_count": 132,
+    "tool": "Greifer"
+  },
+  {
+    "configuration": "Kompakt - Greifer",
+    "volume_relative_errors": [
+      7.748611798006122e-05,
+      8.937069134290821e-05
+    ],
+    "body_count": 132,
+    "tool": "Greifer"
+  },
+  {
+    "configuration": "Lang - Greifer",
+    "volume_relative_errors": [
+      8.461892788086186e-05,
+      9.4118954126837e-05
+    ],
+    "body_count": 132,
+    "tool": "Greifer"
+  },
+  {
+    "configuration": "Standard - Sauger",
+    "volume_relative_errors": [
+      9.622459762929029e-05,
+      7.74861179283694e-05
+    ],
+    "body_count": 131,
+    "tool": "Sauger"
+  },
+  {
+    "configuration": "Kompakt - Sauger",
+    "volume_relative_errors": [
+      7.748611798006122e-05,
+      8.937069134290821e-05
+    ],
+    "body_count": 131,
+    "tool": "Sauger"
+  },
+  {
+    "configuration": "Lang - Sauger",
+    "volume_relative_errors": [
+      8.461892788086186e-05,
+      9.4118954126837e-05
+    ],
+    "body_count": 131,
+    "tool": "Sauger"
+  }
+]

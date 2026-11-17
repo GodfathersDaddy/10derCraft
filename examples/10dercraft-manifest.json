@@ -1,5 +1,10 @@
 [
   {
+    "path": "examples/projects/10der-Rohrroboter-Konfigurierbar.solidcraft",
+    "sha256": "267540703185eafa462b8c747c2e1dfb0f3cb58bd9cd8a5c810e56277b7d862d",
+    "bytes": 578936
+  },
+  {
     "path": "examples/projects/Roboter-Rohr-Schweissbaugruppe-ROM-MKS.solidcraft",
     "sha256": "eca5aa422cb00bd9b3ca54afb1c9ec8ac9133ea2730f83eeec7f459a0157f3aa",
     "bytes": 3874424
